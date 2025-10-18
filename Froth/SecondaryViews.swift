@@ -105,8 +105,8 @@ struct QuestView: View {
                         } label: {
                             Image(systemName: "list.bullet.rectangle")
                                 .foregroundColor(.primary)
+                                .font(.system(size: 18, weight: .medium))
                         }
-                        .offset(y: 8) // Move down slightly
                     }
                 }
                 .overlay(
@@ -1966,12 +1966,268 @@ struct QuickStartCard: View {
 
 // MARK: - Missing Views
 
+struct RegistrationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var store: AppStore
+    @State private var phoneNumber: String = ""
+    @State private var email: String = ""
+    @State private var username: String = ""
+    @State private var currentStep = 0
+    @State private var isLoading = false
+    
+    let onComplete: () -> Void
+    
+    private let steps = ["Phone", "Email", "Username"]
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 32) {
+                // Header
+                VStack(spacing: 16) {
+                    Text("Create Your Account")
+                        .font(.largeTitle.weight(.bold))
+                        .foregroundColor(.primary)
+                    
+                    Text("Let's get you set up with Froth")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 40)
+                
+                // Progress indicator
+                HStack(spacing: 8) {
+                    ForEach(0..<steps.count, id: \.self) { index in
+                        Circle()
+                            .fill(index <= currentStep ? Color.blue : Color.gray.opacity(0.3))
+                            .frame(width: 12, height: 12)
+                            .animation(.easeInOut(duration: 0.3), value: currentStep)
+                    }
+                }
+                .padding(.horizontal, 20)
+                
+                // Form content
+                VStack(spacing: 24) {
+                    // Step indicator
+                    Text("Step \(currentStep + 1) of \(steps.count): \(steps[currentStep])")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    // Input fields based on current step
+                    Group {
+                        switch currentStep {
+                        case 0:
+                            PhoneNumberField(phoneNumber: $phoneNumber)
+                        case 1:
+                            EmailField(email: $email)
+                        case 2:
+                            UsernameField(username: $username)
+                        default:
+                            EmptyView()
+                        }
+                    }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
+                    
+                    // Action buttons
+                    HStack(spacing: 16) {
+                        if currentStep > 0 {
+                            Button("Back") {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    currentStep -= 1
+                                }
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                        }
+                        
+                        Button(currentStep == steps.count - 1 ? "Complete" : "Continue") {
+                            handleContinue()
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(!isCurrentStepValid || isLoading)
+                    }
+                }
+                .padding(.horizontal, 24)
+                
+                Spacer()
+            }
+            .background(
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.05), Color.purple.opacity(0.05)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private var isCurrentStepValid: Bool {
+        switch currentStep {
+        case 0:
+            return !phoneNumber.isEmpty && phoneNumber.count >= 10
+        case 1:
+            return !email.isEmpty && email.contains("@")
+        case 2:
+            return !username.isEmpty && username.count >= 3
+        default:
+            return false
+        }
+    }
+    
+    private func handleContinue() {
+        if currentStep < steps.count - 1 {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                currentStep += 1
+            }
+        } else {
+            // Complete registration
+            isLoading = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // Save all registration data to store
+                store.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+                store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                isLoading = false
+                
+                // Call completion handler to dismiss onboarding and go to homepage
+                onComplete()
+            }
+        }
+    }
+}
+
+struct PhoneNumberField: View {
+    @Binding var phoneNumber: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Phone Number")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            TextField("Enter your phone number", text: $phoneNumber)
+                .keyboardType(.phonePad)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemBackground))
+                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                )
+            
+            Text("We'll use this to verify your account")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct EmailField: View {
+    @Binding var email: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Email Address")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            TextField("Enter your email", text: $email)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemBackground))
+                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                )
+            
+            Text("We'll send you updates about your progress")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct UsernameField: View {
+    @Binding var username: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Username")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            TextField("Choose a username", text: $username)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemBackground))
+                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                )
+            
+            Text("This will be shown on your profile and leaderboard")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct PrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(.white)
+            .font(.headline)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 32)
+            .background(
+                LinearGradient(
+                    colors: [Color.blue, Color.purple],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct SecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(.blue)
+            .font(.headline)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 32)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.blue, lineWidth: 2)
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
 struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: AppStore
     @State private var currentPage = 0
-    @State private var showUsernamePrompt = false
-    @State private var usernameInput: String = ""
+    @State private var showRegistration = false
     
     var body: some View {
         ZStack {
@@ -2050,7 +2306,7 @@ struct OnboardingView: View {
                         }
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                showUsernamePrompt = true
+                                showRegistration = true
                             }
                         }
                         .frame(maxWidth: 280)
@@ -2069,66 +2325,12 @@ struct OnboardingView: View {
             )
         )
         
-        // Username Prompt Overlay
-        if showUsernamePrompt {
-            Color.black.opacity(0.35)
-                .ignoresSafeArea()
-                .transition(.opacity)
-                .zIndex(1)
-            
-            VStack(spacing: 16) {
-                Text("Choose a username")
-                    .font(Brand.titleFont)
-                    .foregroundColor(Brand.textPrimary)
-                
-                Text("This will be shown on your profile.")
-                    .font(Brand.smallFont)
-                    .foregroundColor(Brand.textSecondary)
-                
-                TextField("Enter username", text: $usernameInput)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.white)
-                            .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
-                    )
-                
-                HStack(spacing: 12) {
-                    Button("Cancel") {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            showUsernamePrompt = false
-                        }
-                    }
-                    .buttonStyle(SoftDefaultButtonStyle())
-                    
-                    Button("Continue") {
-                        let trimmed = usernameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        store.username = trimmed
-                        dismiss() // Close onboarding
-                    }
-                    .foregroundColor(.white)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 20)
-                    .background(Color.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }
-            .padding(24)
-            .frame(maxWidth: 360)
-            .background(
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Brand.glassmorphismBorder, lineWidth: 1)
-                    )
-            )
-            .transition(.scale.combined(with: .opacity))
-            .zIndex(2)
         }
+        .sheet(isPresented: $showRegistration) {
+            RegistrationView(onComplete: {
+                dismiss() // Dismiss onboarding to go to homepage
+            })
+                .environmentObject(store)
         }
     }
 }
@@ -2699,6 +2901,8 @@ struct LessonPlayView: View {
     @State private var showStreakCelebration = false
     @State private var timeRemaining: Int = 0
     @State private var timer: Timer?
+    @State private var userAnswers: [Bool] = [] // Track correct/incorrect for each question
+    @State private var selectedAnswers: [Int] = [] // Track what the user actually selected
     
     var progress: Double {
         Double(currentIndex) / Double(lesson.questions.count)
@@ -2815,7 +3019,7 @@ struct LessonPlayView: View {
                             CardQuestionView(
                                 question: q,
                                 lessonType: lesson.type,
-                                onAnswer: handleAnswer(_:correct:)
+                                onAnswer: handleAnswer(_:correct:selectedIndex:)
                             )
                             .scaleEffect(animateQuestion ? 1.0 : 0.95)
                             .opacity(animateQuestion ? 1.0 : 0.8)
@@ -2878,6 +3082,8 @@ struct LessonPlayView: View {
                         lesson: lesson,
                         score: score,
                         totalQuestions: lesson.questions.count,
+                        userAnswers: userAnswers,
+                        selectedAnswers: selectedAnswers,
                         onFinish: finish
                     )
                 }
@@ -2908,7 +3114,11 @@ struct LessonPlayView: View {
         )
     }
 
-    func handleAnswer(_ question: Question, correct: Bool) {
+    func handleAnswer(_ question: Question, correct: Bool, selectedIndex: Int) {
+        // Track the answer
+        userAnswers.append(correct)
+        selectedAnswers.append(selectedIndex)
+        
         if correct {
             score += 1
             store.handleCorrectAnswer()
@@ -2963,10 +3173,13 @@ struct LessonResultsView: View {
     let lesson: Lesson
     let score: Int
     let totalQuestions: Int
+    let userAnswers: [Bool]
+    let selectedAnswers: [Int]
     let onFinish: () -> Void
     
     @State private var animateResults = false
     @State private var showXPAnimation = false
+    @State private var showReview = false
     
     var percentage: Double {
         Double(score) / Double(totalQuestions)
@@ -3063,6 +3276,14 @@ struct LessonResultsView: View {
                 .opacity(animateResults ? 1.0 : 0.0)
                 .animation(.easeOut(duration: 0.8).delay(0.9), value: animateResults)
                 
+                Button("Review") {
+                    showReview = true
+                }
+                .foregroundColor(.blue)
+                .fontWeight(.medium)
+                .opacity(animateResults ? 1.0 : 0.0)
+                .animation(.easeOut(duration: 0.8).delay(1.0), value: animateResults)
+                
                 if percentage < 0.8 {
                     Button("Retry Lesson") {
                         // Handle retry
@@ -3083,13 +3304,314 @@ struct LessonResultsView: View {
                 showXPAnimation = true
             }
         }
+        .sheet(isPresented: $showReview) {
+            ReviewView(lesson: lesson, userAnswers: userAnswers, selectedAnswers: selectedAnswers)
+        }
+    }
+}
+
+struct ReviewView: View {
+    let lesson: Lesson
+    let userAnswers: [Bool]
+    let selectedAnswers: [Int]
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedQuestionIndex: Int? = nil
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Text("Review")
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundColor(.primary)
+                        
+                        Text("Question Review")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 20)
+                    
+                    // Questions list
+                    LazyVStack(spacing: 12) {
+                        ForEach(Array(lesson.questions.enumerated()), id: \.offset) { index, question in
+                            ReviewQuestionRow(
+                                questionNumber: index + 1,
+                                question: question,
+                                isCorrect: index < userAnswers.count ? userAnswers[index] : false,
+                                onTap: {
+                                    selectedQuestionIndex = index
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
+                }
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .sheet(item: Binding<QuestionDetailItem?>(
+            get: { 
+                if let index = selectedQuestionIndex {
+                    return QuestionDetailItem(index: index)
+                }
+                return nil
+            },
+            set: { _ in selectedQuestionIndex = nil }
+        )) { item in
+            QuestionDetailView(
+                question: lesson.questions[item.index],
+                questionNumber: item.index + 1,
+                userSelectedIndex: item.index < selectedAnswers.count ? selectedAnswers[item.index] : -1,
+                isCorrect: item.index < userAnswers.count ? userAnswers[item.index] : false
+            )
+        }
+    }
+}
+
+struct ReviewQuestionRow: View {
+    let questionNumber: Int
+    let question: Question
+    let isCorrect: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 16) {
+                // Question number
+                Text("\(questionNumber)")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(.primary)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        Circle()
+                            .fill(Color(.systemGray6))
+                    )
+                
+                // Question text
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(question.prompt)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    
+                    if let explanation = question.explanation {
+                        Text(explanation)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                
+                Spacer()
+                
+                // Correct/Incorrect indicator
+                Image(systemName: isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(isCorrect ? .green : .red)
+                
+                // Tap indicator
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct QuestionDetailItem: Identifiable {
+    let id = UUID()
+    let index: Int
+}
+
+struct QuestionDetailView: View {
+    let question: Question
+    let questionNumber: Int
+    let userSelectedIndex: Int
+    let isCorrect: Bool
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Text("Question \(questionNumber)")
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundColor(.primary)
+                        
+                        HStack {
+                            Image(systemName: isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(isCorrect ? .green : .red)
+                            Text(isCorrect ? "Correct" : "Incorrect")
+                                .font(.headline)
+                                .foregroundColor(isCorrect ? .green : .red)
+                        }
+                    }
+                    .padding(.top, 20)
+                    
+                    // Question
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Question:")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        Text(question.prompt)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(.systemGray6))
+                            )
+                    }
+                    
+                    // Answer choices
+                    if !question.choices.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Answer Choices:")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            VStack(spacing: 12) {
+                                ForEach(Array(question.choices.enumerated()), id: \.offset) { index, choice in
+                                    AnswerChoiceRow(
+                                        choice: choice,
+                                        index: index,
+                                        isUserAnswer: index == userSelectedIndex,
+                                        isCorrectAnswer: index == question.correctIndex,
+                                        isCorrect: isCorrect
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Explanation
+                    if let explanation = question.explanation {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Explanation:")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            Text(explanation)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .padding(16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemGray6))
+                                )
+                        }
+                    }
+                    
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, 20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct AnswerChoiceRow: View {
+    let choice: String
+    let index: Int
+    let isUserAnswer: Bool
+    let isCorrectAnswer: Bool
+    let isCorrect: Bool
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Choice letter/number
+            Text(String(UnicodeScalar(65 + index)!)) // A, B, C, D
+                .font(.headline.weight(.bold))
+                .foregroundColor(.white)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(backgroundColor)
+                )
+            
+            // Choice text
+            Text(choice)
+                .font(.body)
+                .foregroundColor(.primary)
+                .multilineTextAlignment(.leading)
+            
+            Spacer()
+            
+            // Status indicators
+            HStack(spacing: 8) {
+                if isUserAnswer {
+                    Image(systemName: "person.fill")
+                        .foregroundColor(.blue)
+                        .font(.caption)
+                }
+                
+                if isCorrectAnswer {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(backgroundColor.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(backgroundColor, lineWidth: 2)
+                )
+        )
+    }
+    
+    private var backgroundColor: Color {
+        if isUserAnswer && isCorrectAnswer {
+            return .green
+        } else if isUserAnswer && !isCorrectAnswer {
+            return .red
+        } else if isCorrectAnswer {
+            return .green
+        } else {
+            return .gray
+        }
     }
 }
 
 struct CardQuestionView: View {
     let question: Question
     let lessonType: Lesson.LessonType
-    var onAnswer: (_ question: Question, _ correct: Bool) -> Void
+    var onAnswer: (_ question: Question, _ correct: Bool, _ selectedIndex: Int) -> Void
 
     @State private var flipped: Bool = false
     @State private var selectedIndex: Int? = nil
@@ -3240,7 +3762,7 @@ struct CardQuestionView: View {
                             Spacer()
                             
                             Button(action: {
-                                onAnswer(question, true)
+                                onAnswer(question, true, -1)
                             }) {
                                 HStack {
                                     Image(systemName: "checkmark.circle.fill")
@@ -3316,7 +3838,7 @@ struct CardQuestionView: View {
                             }
                             
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                onAnswer(question, correct)
+                                onAnswer(question, correct, idx)
                                 selectedIndex = nil
                                 showCorrect = false
                                 showExplanation = false
@@ -3367,7 +3889,7 @@ struct CardQuestionView: View {
             } else if lessonType == .miniCase || lessonType == .caseStudy {
                 VStack(spacing: 16) {
                     Button(action: {
-                        onAnswer(question, true)
+                        onAnswer(question, true, -1)
                     }) {
                         HStack {
                             Image(systemName: "pencil")

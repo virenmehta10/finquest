@@ -6,8 +6,7 @@ import Charts
 
 struct ProfileView: View {
     @EnvironmentObject var store: AppStore
-    @State private var nameInput: String = ""
-    @State private var showEditName = false
+    @State private var showEditProfile = false
     @State private var showSettings = false
 
     var body: some View {
@@ -47,10 +46,10 @@ struct ProfileView: View {
                                     .foregroundColor(.secondary)
                             }
                             
-                            Button(action: { showEditName = true }) {
+                            Button(action: { showEditProfile = true }) {
                                 HStack {
                                     Image(systemName: "pencil")
-                                    Text("Edit Name")
+                                    Text("Edit Profile")
                                 }
                                         .font(.system(size: min(14, geometry.size.width * 0.035), weight: .medium))
                                 .foregroundColor(Color.mint)
@@ -139,8 +138,8 @@ struct ProfileView: View {
         }
         
         // Add missing components
-        .sheet(isPresented: $showEditName) {
-            EditNameView(name: $nameInput)
+        .sheet(isPresented: $showEditProfile) {
+            EditProfileView()
                 .environmentObject(store)
         }
         .sheet(isPresented: $showSettings) {
@@ -232,29 +231,158 @@ struct ModernSettingsRow: View {
     }
 }
 
-struct EditNameView: View {
-    @Binding var name: String
+struct EditProfileView: View {
     @EnvironmentObject var store: AppStore
     @Environment(\.dismiss) private var dismiss
+    @State private var username: String = ""
+    @State private var phoneNumber: String = ""
+    @State private var email: String = ""
+    @State private var isLoading = false
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 24) {
-                TextField("Enter your name", text: $name)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .padding()
-                
-                Button("Save") {
-                    store.username = name
-                    dismiss()
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Text("Edit Profile")
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundColor(.primary)
+                        
+                        Text("Update your account information")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 20)
+                    
+                    // Profile fields
+                    VStack(spacing: 20) {
+                        // Username field
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Username")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            TextField("Enter username", text: $username)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .padding(16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemBackground))
+                                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                                )
+                            
+                            Text("This will be shown on your profile and leaderboard")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        // Phone number field
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Phone Number")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            TextField("Enter phone number", text: $phoneNumber)
+                                .keyboardType(.phonePad)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .padding(16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemBackground))
+                                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                                )
+                            
+                            Text("We'll use this to verify your account")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        // Email field
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email Address")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            
+                            TextField("Enter email", text: $email)
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .padding(16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemBackground))
+                                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                                )
+                            
+                            Text("We'll send you updates about your progress")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Save button
+                    Button("Save Changes") {
+                        saveProfile()
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 32)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.blue, Color.purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .disabled(isLoading || username.isEmpty)
+                    .opacity(isLoading || username.isEmpty ? 0.6 : 1.0)
+                    .padding(.horizontal, 20)
+                    
+                    Spacer(minLength: 40)
                 }
-                .buttonStyle(.borderedProminent)
-                
-                Spacer()
             }
-            .padding()
-            .navigationTitle("Edit Name")
+            .background(
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.05), Color.purple.opacity(0.05)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onAppear {
+            // Load current values
+            username = store.username
+            phoneNumber = store.phoneNumber
+            email = store.email
+        }
+    }
+    
+    private func saveProfile() {
+        isLoading = true
+        
+        // Simulate save delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // Update store with new values
+            store.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+            store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            isLoading = false
+            dismiss()
         }
     }
 }

@@ -171,6 +171,8 @@ final class AppStore: ObservableObject {
     @Published var lastPracticeDate: Date? = nil
     @Published var completedLessonIDs: Set<UUID> = []
     @Published var username: String = "Raymundo"
+    @Published var phoneNumber: String = ""
+    @Published var email: String = ""
     @Published var level: Int = 1
     @Published var achievements: Set<UUID> = []
     @Published var weeklyGoal: Int = 500
