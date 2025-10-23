@@ -10,115 +10,120 @@ struct ProfileView: View {
     @State private var showSettings = false
 
     var body: some View {
-        GeometryReader { geometry in
             NavigationStack {
             ScrollView {
-                    LazyVStack(spacing: 24) {
-                        // Profile header with glassmorphism
-                        GlassmorphismCard(cornerRadius: 24, shadowRadius: 15) {
-                    VStack(spacing: 20) {
-                        // Avatar and name
-                        VStack(spacing: 16) {
+                LazyVStack(spacing: 32) {
+                    Spacer()
+                        .frame(height: 20)
+                    // Professional Profile Header
+                    VStack(spacing: 16) {
+                        // Avatar with sophisticated styling
                             ZStack {
                                 Circle()
                                     .fill(
                                         LinearGradient(
-                                                    colors: [Color.mint, .blue, .purple],
+                                        colors: [
+                                            Color(red: 0.2, green: 0.3, blue: 0.5),
+                                            Color(red: 0.1, green: 0.2, blue: 0.4)
+                                        ],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
                                     )
-                                            .frame(width: min(100, geometry.size.width * 0.25), height: min(100, geometry.size.width * 0.25))
-                                            .shadow(color: Color.mint.opacity(0.3), radius: 12, x: 0, y: 6)
+                                .frame(width: 60, height: 60)
                                 
                                 Text(String(store.username.prefix(1)).uppercased())
-                                            .font(.system(size: min(40, geometry.size.width * 0.1), weight: .bold))
+                                .font(.system(size: 24, weight: .bold))
                                     .foregroundColor(.white)
                             }
                             
-                            VStack(spacing: 8) {
+                        // User info with clean typography
+                            VStack(spacing: 4) {
                                 Text(store.username)
-                                            .font(.system(size: min(24, geometry.size.width * 0.06), weight: .bold))
+                                .font(.headline.weight(.semibold))
                                     .foregroundColor(.primary)
                                 
                                 Text("Level \(store.level) • \(store.xp) XP")
-                                            .font(.system(size: min(16, geometry.size.width * 0.04)))
+                                .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                             
+                        // Subtle edit button
                             Button(action: { showEditProfile = true }) {
-                                HStack {
+                            HStack(spacing: 6) {
                                     Image(systemName: "pencil")
+                                    .font(.system(size: 12, weight: .medium))
                                     Text("Edit Profile")
-                                }
-                                        .font(.system(size: min(14, geometry.size.width * 0.035), weight: .medium))
-                                .foregroundColor(Color.mint)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .fill(Color.mint.opacity(0.1))
+                                    RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(.systemGray6))
                                 )
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                                .padding(min(20, geometry.size.width * 0.05))
-                            }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
+                    .background(
+                        Rectangle()
+                            .fill(Color(.systemBackground))
+                            .overlay(
+                                Rectangle()
+                                    .stroke(Color.black, lineWidth: 2)
+                            )
+                    )
                     .padding(.horizontal, 20)
-                            .padding(.top, 20)
                     
-                            // Stats grid with modern cards
-                    VStack(alignment: .leading, spacing: 16) {
+                    // Professional Stats Section
+                    VStack(alignment: .leading, spacing: 20) {
                                 Text("Your Stats")
-                                    .font(.system(size: min(20, geometry.size.width * 0.05), weight: .bold))
+                            .font(.title2.weight(.semibold))
                             .foregroundColor(.primary)
                                     .padding(.horizontal, 20)
                                 
                         LazyVGrid(columns: [
-                                    GridItem(.flexible(), spacing: 12),
-                                    GridItem(.flexible(), spacing: 12),
-                                GridItem(.flexible(), spacing: 12)
+                            GridItem(.flexible(), spacing: 16),
+                            GridItem(.flexible(), spacing: 16),
+                            GridItem(.flexible(), spacing: 16)
                         ], spacing: 16) {
-                                    ModernStatItem(title: "Total XP", value: "\(store.xp)", icon: "star.fill", color: .yellow, geometry: geometry)
-                                    ModernStatItem(title: "Level", value: "\(store.level)", icon: "arrow.up.circle.fill", color: .blue, geometry: geometry)
-                                    ModernStatItem(title: "Streak", value: "\(store.streakDays)", icon: "flame.fill", color: .orange, geometry: geometry)
-                                    ModernStatItem(title: "Perfect", value: "\(store.perfectLessons)", icon: "checkmark.seal.fill", color: .green, geometry: geometry)
-                                    ModernStatItem(title: "Lessons", value: "\(store.completedLessonIDs.count)", icon: "book.fill", color: .purple, geometry: geometry)
-                                    ModernStatItem(title: "Study Time", value: "\(store.totalStudyTime)m", icon: "clock.fill", color: Color.mint, geometry: geometry)
+                            ProfessionalStatItem(title: "Total XP", value: "\(store.xp)", icon: "star.fill")
+                            ProfessionalStatItem(title: "Level", value: "\(store.level)", icon: "arrow.up.circle.fill")
+                            ProfessionalStatItem(title: "Streak", value: "\(store.streakDays)", icon: "flame.fill")
+                            ProfessionalStatItem(title: "Perfect", value: "\(store.perfectLessons)", icon: "checkmark.seal.fill")
+                            ProfessionalStatItem(title: "Lessons", value: "\(store.completedLessonIDs.count)", icon: "book.fill")
+                            ProfessionalStatItem(title: "Study Time", value: "\(store.totalStudyTime)m", icon: "clock.fill")
                                 }
                     .padding(.horizontal, 20)
                             }
                     
-                    // Settings section
-                    VStack(alignment: .leading, spacing: 16) {
+                    // Clean Settings Section
+                    VStack(alignment: .leading, spacing: 20) {
                                 Text("Settings")
-                                    .font(.system(size: min(20, geometry.size.width * 0.05), weight: .bold))
+                            .font(.title2.weight(.semibold))
                             .foregroundColor(.primary)
                                     .padding(.horizontal, 20)
                         
                         VStack(spacing: 12) {
-                                    ModernSettingsRow(
+                            ProfessionalSettingsRow(
                             title: "Notifications",
                                         icon: "bell.fill",
-                                        color: .blue,
-                                        isOn: $store.notificationsEnabled,
-                                        geometry: geometry
+                                isOn: $store.notificationsEnabled
                                     )
                                     
-                                    ModernSettingsRow(
+                            ProfessionalSettingsRow(
                                         title: "Sound Effects",
                             icon: "speaker.wave.2.fill",
-                                        color: .green,
-                                        isOn: $store.soundEnabled,
-                                        geometry: geometry
+                                isOn: $store.soundEnabled
                                     )
                                     
-                                    ModernSettingsRow(
+                            ProfessionalSettingsRow(
                                         title: "Haptic Feedback",
                                         icon: "iphone.radiowaves.left.and.right",
-                                        color: .purple,
-                                        isOn: $store.hapticsEnabled,
-                                        geometry: geometry
+                                isOn: $store.hapticsEnabled
                                     )
                                 }
                     .padding(.horizontal, 20)
@@ -126,15 +131,8 @@ struct ProfileView: View {
                             .padding(.bottom, 100)
                         }
                     }
-                    .background(
-                        AnimatedGradientBackground(
-                            colors: [Color.purple.opacity(0.1), Color.blue.opacity(0.08), Color.mint.opacity(0.06), Color.cyan.opacity(0.04)]
-                        )
-                    )
-                    .navigationTitle("Profile")
-                    .navigationBarTitleDisplayMode(.large)
-                }
-            }
+            .background(Color(.systemGroupedBackground))
+                    .navigationBarTitleDisplayMode(.inline)
         }
         
         // Add missing components
@@ -148,34 +146,55 @@ struct ProfileView: View {
     }
 }
 
-struct ModernStatItem: View {
+struct ProfessionalStatItem: View {
     let title: String
     let value: String
     let icon: String
-    let color: Color
-    let geometry: GeometryProxy
     @State private var appear = false
     
+    private var iconColor: Color {
+        switch icon {
+        case "star.fill":
+            return Color(red: 0.8, green: 0.7, blue: 0.2) // Dull yellow
+        case "arrow.up.circle.fill":
+            return Color(red: 0.3, green: 0.5, blue: 0.8) // Dull blue
+        case "flame.fill":
+            return Color(red: 0.8, green: 0.4, blue: 0.2) // Dull orange
+        case "checkmark.seal.fill":
+            return Color(red: 0.3, green: 0.7, blue: 0.3) // Dull green
+        case "book.fill":
+            return Color(red: 0.6, green: 0.4, blue: 0.8) // Dull purple
+        case "clock.fill":
+            return Color(red: 0.4, green: 0.6, blue: 0.7) // Dull teal
+        default:
+            return .primary
+        }
+    }
+    
     var body: some View {
-        GlassmorphismCard(cornerRadius: 16, shadowRadius: 8) {
-            VStack(spacing: 8) {
+        VStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: min(20, geometry.size.width * 0.05), weight: .bold))
-                    .foregroundColor(color)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(iconColor)
                 
                 Text(value)
-                    .font(.system(size: min(16, geometry.size.width * 0.04), weight: .bold))
+                .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
                 
                 Text(title)
-                    .font(.system(size: min(12, geometry.size.width * 0.03), weight: .medium))
+                .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
             }
-            .padding(min(12, geometry.size.width * 0.03))
-        }
-        .scaleEffect(appear ? 1 : 0.8)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 4)
+        )
+        .scaleEffect(appear ? 1 : 0.9)
         .opacity(appear ? 1 : 0)
         .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double.random(in: 0...0.3)), value: appear)
         .onAppear {
@@ -184,45 +203,36 @@ struct ModernStatItem: View {
     }
 }
 
-struct ModernSettingsRow: View {
+struct ProfessionalSettingsRow: View {
     let title: String
     let icon: String
-    let color: Color
     @Binding var isOn: Bool
-    let geometry: GeometryProxy
     @State private var appear = false
     
     var body: some View {
-        GlassmorphismCard(cornerRadius: 16, shadowRadius: 8) {
             HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(
-                LinearGradient(
-                                colors: [color.opacity(0.8), color],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-                        .frame(width: min(40, geometry.size.width * 0.1), height: min(40, geometry.size.width * 0.1))
-                    
                     Image(systemName: icon)
-                        .font(.system(size: min(18, geometry.size.width * 0.045), weight: .bold))
-                        .foregroundColor(.white)
-                }
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(.primary)
+                .frame(width: 24, height: 24)
                 
                 Text(title)
-                    .font(.system(size: min(16, geometry.size.width * 0.04), weight: .semibold))
+                .font(.body.weight(.medium))
                     .foregroundColor(.primary)
                 
                 Spacer()
                 
                 Toggle("", isOn: $isOn)
-                    .toggleStyle(SwitchToggleStyle(tint: color))
-            }
-            .padding(min(16, geometry.size.width * 0.04))
+                .toggleStyle(SwitchToggleStyle(tint: .blue))
         }
-        .scaleEffect(appear ? 1 : 0.8)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 4)
+        )
+        .scaleEffect(appear ? 1 : 0.95)
         .opacity(appear ? 1 : 0)
         .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double.random(in: 0...0.2)), value: appear)
         .onAppear {
@@ -534,14 +544,18 @@ struct SettingsView: View {
 // MARK: - Preview
 
 #Preview("ContentView") {
-    ContentView()
-        .environmentObject(AppStore())
+    let previewStore = AppStore()
+    previewStore.isPreviewMode = true
+    return ContentView()
+        .environmentObject(previewStore)
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
-    ContentView()
-        .environmentObject(AppStore())
+    let previewStore = AppStore()
+    previewStore.isPreviewMode = true
+    return ContentView()
+        .environmentObject(previewStore)
         .preferredColorScheme(.dark)
 }
 

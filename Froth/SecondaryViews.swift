@@ -13,32 +13,56 @@ struct QuestView: View {
     @State private var unlockedLessonIndex: Int? = nil
     @State private var isTransitioning = false
     @State private var previousModule: String = ""
+    @State private var roadGlowAnimation = false
+    @State private var showProUpgrade = false
     
     private var unlockedCount: Int {
         max(1, store.completedLessonIDs.count + 1)
     }
     
-    // Per-module unlock logic: Level 1 is unlocked; next levels unlock sequentially within the same module
+    // Per-module unlock logic: Level 1 is always unlocked, Level 2 unlocks after Level 1 completion, Levels 3+ require pro
     private func isLessonUnlocked(lesson: Lesson, completedIDs: Set<UUID>) -> Bool {
         let moduleLessons = store.getCurrentModuleLessons()
         guard let idx = moduleLessons.firstIndex(where: { $0.id == lesson.id }) else { return false }
-        if idx == 0 { return true }
-        let prev = moduleLessons[idx - 1]
-        return completedIDs.contains(prev.id)
+        
+        // Level 1 is always unlocked
+        if idx == 0 {
+            return true
+        }
+        
+        // Level 2 unlocks after Level 1 is completed
+        if idx == 1 {
+            let level1 = moduleLessons[0]
+            return completedIDs.contains(level1.id)
+        }
+        
+        // Levels 3+ require pro access AND previous level completion
+        if idx >= 2 {
+            let prev = moduleLessons[idx - 1]
+            return store.isProUser && completedIDs.contains(prev.id)
+        }
+        
+        return false
     }
     
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
                 ZStack {
+                    // Enhanced animated background with multiple layers
+                ZStack {
                     // App-themed red/blue gradient background - covers entire screen
                     RedBlueSoftBackground()
                         .ignoresSafeArea(.all)
+                    }
                     
                     ScrollView(showsIndicators: false) {
                         ZStack(alignment: .top) {
-                            // Curvy road path behind nodes
-                            QuestRoadView()
+                            // Enhanced curvy road path behind nodes with glowing effects
+                            EnhancedQuestRoadView(
+                                roadGlowAnimation: roadGlowAnimation,
+                                completedCount: store.completedLessonIDs.count
+                            )
                                 .padding(.horizontal, 20)
                             
                             VStack(spacing: 24) {
@@ -48,7 +72,7 @@ struct QuestView: View {
                                     ForEach(moduleLessons.indices, id: \.self) { index in
                                         let lesson = moduleLessons[index]
                                         let isUnlocked = isLessonUnlocked(lesson: lesson, completedIDs: store.completedLessonIDs)
-                                        QuestLevelNodeView(lesson: lesson, index: index, isUnlocked: isUnlocked, geometry: geometry)
+                                        QuestLevelNodeView(lesson: lesson, index: index, isUnlocked: isUnlocked, geometry: geometry, showProUpgrade: $showProUpgrade)
                                             .transition(.asymmetric(
                                                 insertion: .scale(scale: 0.7).combined(with: .opacity).combined(with: .offset(y: 50)),
                                                 removal: .scale(scale: 0.7).combined(with: .opacity).combined(with: .offset(y: -50))
@@ -126,6 +150,7 @@ struct QuestView: View {
                 )
                 .onAppear {
                     appear = true
+                    roadGlowAnimation = true
                     
                     // Check if we should show unlock animation in selected module
                     if store.shouldShowUnlockAnimation {
@@ -144,6 +169,63 @@ struct QuestView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showProUpgrade) {
+            ProUpgradeView()
+        }
+    }
+}
+
+// MARK: - Enhanced Gamified Road Components
+
+struct EnhancedQuestRoadView: View {
+    @EnvironmentObject var store: AppStore
+    let roadGlowAnimation: Bool
+    let completedCount: Int
+    @State private var sparkleAnimation = false
+    @State private var roadPulseAnimation = false
+    @State private var progressAnimation = false
+    
+    private var progressPercentage: Double {
+        let totalLessons = ContentProvider.sampleLessons.count
+        return Double(completedCount) / Double(max(1, totalLessons))
+    }
+    
+    var body: some View {
+        ZStack {
+            // Subtle road border for definition
+            QuestCurvyRoad()
+                .stroke(
+                    Color.black.opacity(0.08),
+                    style: StrokeStyle(lineWidth: 32, lineCap: .round)
+                )
+            
+            // Main road surface with elegant gradient
+            QuestCurvyRoad()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.96, green: 0.94, blue: 0.90), // Light warm beige
+                            Color(red: 0.94, green: 0.91, blue: 0.87), // Slightly darker
+                            Color(red: 0.92, green: 0.89, blue: 0.84)  // Darker for depth
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 28, lineCap: .round)
+                )
+                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                .shadow(color: Brand.gamificationAccent.opacity(0.05), radius: 8, x: 0, y: 3)
+            
+            // Removed progress overlay (sludge animation) - road stays clean
+            
+            // Removed glow effect for completed sections - keeping road clean
+            
+        }
+        .onAppear {
+            sparkleAnimation = true
+            roadPulseAnimation = true
+            progressAnimation = true
         }
     }
 }
@@ -184,54 +266,32 @@ struct QuestRoadView: View {
     
     var body: some View {
         ZStack {
-            // Background sparkles
-            ForEach(0..<8, id: \.self) { index in
-                Circle()
-                    .fill(Color.white.opacity(0.6))
-                    .frame(width: 2, height: 2)
-                    .offset(
-                        x: CGFloat.random(in: -150...150),
-                        y: CGFloat.random(in: -200...200)
-                    )
-                    .opacity(sparkleAnimation ? 1.0 : 0.3)
-                    .scaleEffect(sparkleAnimation ? 1.2 : 0.8)
-                    .animation(
-                        .easeInOut(duration: Double.random(in: 2...4))
-                        .repeatForever(autoreverses: true)
-                        .delay(Double(index) * 0.3),
-                        value: sparkleAnimation
-                    )
-            }
-            
             // Simple constant color road background
             QuestCurvyRoad()
                 .stroke(
                     Color(red: 0.96, green: 0.92, blue: 0.85), // Light golden beige
-                    style: StrokeStyle(lineWidth: 60, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
                 )
-                .blur(radius: 8)
+                .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
             
-            // Progress filling with light black/brown color
+            // Progress overlay with enhanced colors
             QuestCurvyRoad()
                 .trim(from: 0, to: progressPercentage)
                 .stroke(
-                    Color(red: 0.4, green: 0.3, blue: 0.2), // Light black/brown
-                    style: StrokeStyle(lineWidth: 40, lineCap: .round)
+                    LinearGradient(
+                        colors: [
+                            Brand.primaryBlue,
+                            Brand.gamificationAccent,
+                            Brand.lightCoral,
+                            Brand.softBlue
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
                 )
+                .shadow(color: Brand.primaryBlue.opacity(0.3), radius: 3, x: 0, y: 1)
                 .animation(.easeInOut(duration: 1.0), value: progressPercentage)
-            
-            // Main road with simple constant color
-            QuestCurvyRoad()
-                .stroke(
-                    Color(red: 0.98, green: 0.94, blue: 0.88), // Lighter golden beige
-                    style: StrokeStyle(lineWidth: 40, lineCap: .round)
-                )
-                .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 3)
-            
-            // Inner highlight for road definition
-            QuestCurvyRoad()
-                .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 30, lineCap: .round))
-                .blur(radius: 0.6)
         }
         .onAppear {
             sparkleAnimation = true
@@ -297,13 +357,13 @@ struct RedBlueSoftBackground: View {
                 endRadius: 280
             )
             RadialGradient(
-                colors: [Color(red: 1.00, green: 0.68, blue: 0.40).opacity(0.15), Color.clear], // golden tint
+                colors: [Color(red: 1.00, green: 0.68, blue: 0.40).opacity(0.05), Color.clear], // golden tint - reduced opacity
                 center: .bottom,
                 startRadius: 0,
                 endRadius: 360
             )
             RadialGradient(
-                colors: [Color(red: 1.00, green: 0.55, blue: 0.45).opacity(0.12), Color.clear], // orange-red tint
+                colors: [Color(red: 1.00, green: 0.55, blue: 0.45).opacity(0.03), Color.clear], // orange-red tint - reduced opacity
                 center: .top,
                 startRadius: 0,
                 endRadius: 300
@@ -330,7 +390,21 @@ struct QuestLevelNodeView: View {
     let index: Int
     let isUnlocked: Bool
     let geometry: GeometryProxy
+    @Binding var showProUpgrade: Bool
     @State private var hasAppeared = false
+    
+    private var isLocked: Bool {
+        !store.canAccessLesson(lesson: lesson)
+    }
+    
+    private var isProLocked: Bool {
+        let moduleLessons = store.getCurrentModuleLessons()
+        guard let lessonIndex = moduleLessons.firstIndex(where: { $0.id == lesson.id }) else {
+            return false
+        }
+        // Levels 3+ (indices 2+) require pro access
+        return lessonIndex >= 2 && !store.isProUser
+    }
     
     private var nodeSide: HorizontalAlignment { index % 2 == 0 ? .leading : .trailing }
     private var xOffset: CGFloat {
@@ -347,8 +421,8 @@ struct QuestLevelNodeView: View {
         HStack { content }
             .frame(maxWidth: .infinity, alignment: .center)
             .offset(x: xOffset)
-            .scaleEffect(isUnlocked ? 1.0 : 0.95)
-            .opacity(isUnlocked ? 1.0 : 0.7)
+            .scaleEffect(isUnlocked && !isLocked ? 1.0 : 0.95)
+            .opacity(isUnlocked && !isLocked ? 1.0 : (isProLocked ? 0.6 : 0.7))
             .animation(.easeInOut(duration: 0.3), value: isUnlocked)
             .onAppear {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(Double(index) * 0.15)) {
@@ -364,39 +438,73 @@ struct QuestLevelNodeView: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(isUnlocked ? Color.white : Color.white.opacity(0.75))
+                    .fill(isUnlocked && !isLocked ? Color.white : (isProLocked ? Color.white.opacity(0.6) : Color.white.opacity(0.75)))
                     .frame(width: 52, height: 52)
                     .overlay(
                         Circle()
-                            .stroke(Color.black.opacity(0.15), lineWidth: 1)
+                            .stroke(isProLocked ? Color.orange.opacity(0.6) : Color.black.opacity(0.25), lineWidth: isProLocked ? 2.0 : 1.5)
                     )
-                    .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+                    .shadow(color: isProLocked ? Color.orange.opacity(0.2) : .black.opacity(0.08), radius: isProLocked ? 12 : 8, x: 0, y: 4)
                 if store.completedLessonIDs.contains(lesson.id) {
                     // Completed lesson - green checkmark
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.green)
-                } else if isUnlocked {
+                } else if isUnlocked && !isLocked {
                     // Unlocked but not completed - blue flag
                     NavigationLink(destination: LessonPlayView(lesson: lesson)) {
                         Image(systemName: "flag.fill")
                             .font(.system(size: 24, weight: .bold))
                             .foregroundColor(.blue)
                     }
+                } else if isLocked {
+                    // Pro locked lesson - premium lock with crown
+                    Button(action: {
+                        showProUpgrade = true
+                    }) {
+                        ZStack {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.orange)
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.yellow)
+                                .offset(x: 10, y: -10)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 } else {
-                    // Locked lesson - red lock
+                    // Regular locked lesson - red lock
                     Image(systemName: "lock.fill")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(Color(red: 0.8, green: 0.3, blue: 0.3)) // Slight red tinge
                 }
             }
             
-            Text(lesson.title.components(separatedBy: " - ").last ?? lesson.title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 150)
+            VStack(spacing: 4) {
+                Text(lesson.title.components(separatedBy: " - ").last ?? lesson.title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 150)
+                
+                if isProLocked {
+                    Text("PRO")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(LinearGradient(
+                                    colors: [Color.orange, Color.yellow],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ))
+                        )
+                }
+            }
             
             Text("\(lesson.questions.count) Questions")
                 .font(.system(size: 11, weight: .medium))
@@ -473,31 +581,116 @@ struct ModernRoadLessonNode: View {
     let isLast: Bool
     let geometry: GeometryProxy
     @State private var appear = false
+    @State private var pulseAnimation = false
+    @State private var glowAnimation = false
+    @State private var sparkleAnimation = false
+    @State private var hoverEffect = false
     
     var body: some View {
         HStack(spacing: 16) {
-            // Lesson node
+            // Enhanced lesson node with animations
             NavigationLink(destination: LessonPlayView(lesson: lesson)) {
                 ZStack {
+                    // Outer glow effect for unlocked/completed lessons
+                    if isUnlocked || isCompleted {
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        (isCompleted ? Brand.gamificationAccent : lesson.type.color).opacity(0.3),
+                                        (isCompleted ? Brand.gamificationAccent : lesson.type.color).opacity(0.1),
+                                        .clear
+                                    ],
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: 40
+                                )
+                            )
+                            .frame(width: min(80, geometry.size.width * 0.18), height: min(80, geometry.size.width * 0.18))
+                            .blur(radius: 4)
+                            .scaleEffect(glowAnimation ? 1.2 : 1.0)
+                            .opacity(glowAnimation ? 0.8 : 0.4)
+                            .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: glowAnimation)
+                    }
+                    
+                    // Main node with enhanced gradient
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: isCompleted ? [.green, .mint] : isUnlocked ? [lesson.type.color, lesson.type.color.opacity(0.8)] : [.gray, .gray.opacity(0.5)],
+                                colors: isCompleted ? 
+                                    [Brand.gamificationAccent, Brand.lightCoral] : 
+                                    isUnlocked ? 
+                                        [lesson.type.color, lesson.type.color.opacity(0.8)] : 
+                                        [Color.gray.opacity(0.6), Color.gray.opacity(0.4)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: min(50, geometry.size.width * 0.12), height: min(50, geometry.size.width * 0.12))
-                        .shadow(color: lesson.type.color.opacity(0.3), radius: 8, x: 0, y: 4)
+                        .frame(width: min(60, geometry.size.width * 0.14), height: min(60, geometry.size.width * 0.14))
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.8),
+                                            Color.white.opacity(0.3)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                        )
+                        .shadow(color: (isCompleted ? Brand.gamificationAccent : lesson.type.color).opacity(0.4), radius: pulseAnimation ? 15 : 8, x: 0, y: 6)
+                        .scaleEffect(pulseAnimation ? 1.05 : 1.0)
+                        .scaleEffect(hoverEffect ? 1.1 : 1.0)
+                        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulseAnimation)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hoverEffect)
+                    
+                    // Icon with enhanced styling
+                    ZStack {
+                        // Icon background for better visibility
+                        Circle()
+                            .fill(Color.white.opacity(0.2))
+                            .frame(width: min(35, geometry.size.width * 0.08), height: min(35, geometry.size.width * 0.08))
+                            .blur(radius: 1)
                     
                     Image(systemName: isCompleted ? "checkmark" : lesson.type.icon)
-                        .font(.system(size: min(20, geometry.size.width * 0.05), weight: .bold))
+                            .font(.system(size: min(24, geometry.size.width * 0.06), weight: .bold))
                         .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    }
+                    
+                    // Celebration sparkles for completed lessons
+                    if isCompleted {
+                        ForEach(0..<6, id: \.self) { sparkleIndex in
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 8))
+                                .foregroundColor(Brand.gamificationAccent)
+                                .offset(
+                                    x: cos(Double(sparkleIndex) * .pi / 3) * 25,
+                                    y: sin(Double(sparkleIndex) * .pi / 3) * 25
+                                )
+                                .opacity(sparkleAnimation ? 1.0 : 0.0)
+                                .scaleEffect(sparkleAnimation ? 1.5 : 0.5)
+                                .animation(
+                                    .easeOut(duration: 0.8)
+                                    .repeatForever(autoreverses: false)
+                                    .delay(Double(sparkleIndex) * 0.1),
+                                    value: sparkleAnimation
+                                )
+                        }
+                    }
                 }
             }
             .disabled(!isUnlocked)
+            .onHover { hovering in
+                if isUnlocked {
+                    hoverEffect = hovering
+                }
+            }
             
-            // Lesson info
+            // Enhanced lesson info with better typography
             VStack(alignment: .leading, spacing: 8) {
                 Text(lesson.title)
                     .font(.system(size: min(16, geometry.size.width * 0.04), weight: .bold))
@@ -510,43 +703,95 @@ struct ModernRoadLessonNode: View {
                     .lineLimit(2)
                 
                 HStack {
+                    // Enhanced type indicator
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(lesson.type.color)
+                            .frame(width: 8, height: 8)
                     Text(lesson.type.displayName)
                         .font(.system(size: min(12, geometry.size.width * 0.03), weight: .semibold))
                         .foregroundColor(lesson.type.color)
+                    }
                     
                     Spacer()
                     
+                    // Enhanced XP indicator
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(Brand.gold)
                     Text("\(lesson.xpReward) XP")
                         .font(.system(size: min(12, geometry.size.width * 0.03), weight: .semibold))
-                        .foregroundColor(.blue)
+                            .foregroundColor(Brand.gold)
+                    }
                 }
             }
             
             Spacer()
             
-            // Status indicator
+            // Enhanced status indicator with animations
             if isCompleted {
+                ZStack {
+                    Circle()
+                        .fill(Brand.gamificationAccent.opacity(0.2))
+                        .frame(width: min(30, geometry.size.width * 0.07), height: min(30, geometry.size.width * 0.07))
+                        .scaleEffect(pulseAnimation ? 1.2 : 1.0)
+                        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulseAnimation)
+                    
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: min(20, geometry.size.width * 0.05)))
-                    .foregroundColor(.green)
+                        .foregroundColor(Brand.gamificationAccent)
+                }
             } else if !isUnlocked {
+                ZStack {
+                    Circle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: min(30, geometry.size.width * 0.07), height: min(30, geometry.size.width * 0.07))
+                    
                 Image(systemName: "lock.fill")
-                    .font(.system(size: min(20, geometry.size.width * 0.05)))
+                        .font(.system(size: min(16, geometry.size.width * 0.04)))
                     .foregroundColor(.gray)
+                }
             }
         }
         .padding(min(16, geometry.size.width * 0.04))
         .background(
+            ZStack {
             RoundedRectangle(cornerRadius: 16)
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
+                
+                // Subtle inner glow for unlocked lessons
+                if isUnlocked || isCompleted {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    (isCompleted ? Brand.gamificationAccent : lesson.type.color).opacity(0.05),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 100
+                            )
+                        )
+                }
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(
-                    isCompleted ? Color.green.opacity(0.3) :
-                    isUnlocked ? lesson.type.color.opacity(0.2) : Color.gray.opacity(0.1),
-                    lineWidth: 1
+                    LinearGradient(
+                        colors: [
+                            isCompleted ? Brand.gamificationAccent.opacity(0.4) :
+                            isUnlocked ? lesson.type.color.opacity(0.3) : Color.gray.opacity(0.1),
+                            isCompleted ? Brand.gamificationAccent.opacity(0.2) :
+                            isUnlocked ? lesson.type.color.opacity(0.1) : Color.gray.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
                 )
         )
         .scaleEffect(appear ? 1 : 0.8)
@@ -554,6 +799,13 @@ struct ModernRoadLessonNode: View {
         .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double(index) * 0.1), value: appear)
         .onAppear {
             appear = true
+            if isUnlocked || isCompleted {
+                pulseAnimation = true
+                glowAnimation = true
+            }
+            if isCompleted {
+                sparkleAnimation = true
+            }
         }
     }
 }
@@ -1599,13 +1851,11 @@ struct AchievementBadge: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: isUnlocked ? [achievement.rarity.color, achievement.rarity.color.opacity(0.7)] : [.gray.opacity(0.3), .gray.opacity(0.1)],
+                    .fill(isUnlocked ? achievement.rarity.gradient : LinearGradient(
+                        colors: [.gray.opacity(0.3), .gray.opacity(0.1)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
-                        )
-                    )
+                    ))
                     .frame(width: 50, height: 50)
                 
                 Image(systemName: achievement.icon)
@@ -1653,6 +1903,8 @@ struct CelebrationView: View {
 struct StreakCelebrationView: View {
     let streak: Int
     @State private var animate = false
+    @State private var fadeOut = false
+    @State private var fadeIn = false
     
     var body: some View {
         ZStack {
@@ -1714,8 +1966,18 @@ struct StreakCelebrationView: View {
                     )
             )
         }
+        .opacity(fadeOut ? 0.0 : (fadeIn ? 1.0 : 0.0))
+        .scaleEffect(fadeOut ? 0.8 : (fadeIn ? 1.0 : 0.8))
+        .animation(.easeOut(duration: 0.5), value: fadeOut)
+        .animation(.easeOut(duration: 0.3), value: fadeIn)
         .onAppear {
+            fadeIn = true
             animate = true
+            
+            // Start fade out after 2.5 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                fadeOut = true
+            }
         }
     }
 }
@@ -1969,194 +2231,644 @@ struct QuickStartCard: View {
 struct RegistrationView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: AppStore
-    @State private var phoneNumber: String = ""
+    @State private var firstName: String = ""
     @State private var email: String = ""
-    @State private var username: String = ""
-    @State private var currentStep = 0
+    @State private var phoneNumber: String = ""
     @State private var isLoading = false
+    @State private var animateFields = false
+    @State private var showSuccessAnimation = false
+    @State private var animateBackground = false
     
     let onComplete: () -> Void
     
-    private let steps = ["Phone", "Email", "Username"]
+    private var formProgress: Double {
+        let completedFields = [firstName.count >= 2, email.contains("@") && email.hasSuffix(".edu"), phoneNumber.filter { $0.isNumber }.count >= 10].filter { $0 }.count
+        return Double(completedFields) / 3.0
+    }
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 32) {
-                // Header
-                VStack(spacing: 16) {
-                    Text("Create Your Account")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundColor(.primary)
-                    
-                    Text("Let's get you set up with Froth")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 40)
-                
-                // Progress indicator
-                HStack(spacing: 8) {
-                    ForEach(0..<steps.count, id: \.self) { index in
-                        Circle()
-                            .fill(index <= currentStep ? Color.blue : Color.gray.opacity(0.3))
-                            .frame(width: 12, height: 12)
-                            .animation(.easeInOut(duration: 0.3), value: currentStep)
-                    }
-                }
-                .padding(.horizontal, 20)
-                
-                // Form content
-                VStack(spacing: 24) {
-                    // Step indicator
-                    Text("Step \(currentStep + 1) of \(steps.count): \(steps[currentStep])")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    // Input fields based on current step
-                    Group {
-                        switch currentStep {
-                        case 0:
-                            PhoneNumberField(phoneNumber: $phoneNumber)
-                        case 1:
-                            EmailField(email: $email)
-                        case 2:
-                            UsernameField(username: $username)
-                        default:
-                            EmptyView()
+        ZStack {
+            // Enhanced background with animated elements
+            Brand.backgroundGradient
+                .ignoresSafeArea(.all)
+            
+            // Floating animated elements - fixed positions to prevent movement
+            ForEach(0..<6, id: \.self) { index in
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Brand.primaryBlue.opacity(0.1), Brand.lightCoral.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 80, height: 80)
+                    .offset(
+                        x: CGFloat(index * 100 - 250),
+                        y: CGFloat(index * 80 - 200)
+                    )
+                    .animation(
+                        .easeInOut(duration: 4.0)
+                        .repeatForever(autoreverses: true)
+                        .delay(Double(index) * 0.5),
+                        value: animateBackground
+                    )
+            }
+            
+            ScrollView {
+            VStack(spacing: 0) {
+                    // Enhanced header section
+                    VStack(spacing: 24) {
+                        // App logo/icon
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Brand.primaryBlue.opacity(0.2), Brand.lightCoral.opacity(0.1)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 100, height: 100)
+                                .blur(radius: 20)
+                            
+                            Image(systemName: "graduationcap.fill")
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundColor(Brand.primaryBlue)
                         }
-                    }
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
+                        .scaleEffect(animateFields ? 1.0 : 0.8)
+                        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateFields)
+                        
+                        // Removed title and subtitle for cleaner design
+                        .opacity(animateFields ? 1.0 : 0.0)
+                        .offset(y: animateFields ? 0 : 20)
+                        .animation(.easeOut(duration: 0.8).delay(0.4), value: animateFields)
+                }
+                    .padding(.top, 40)
+                    .padding(.horizontal, 24)
                     
-                    // Action buttons
-                    HStack(spacing: 16) {
-                        if currentStep > 0 {
-                            Button("Back") {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    currentStep -= 1
-                                }
-                            }
-                            .buttonStyle(SecondaryButtonStyle())
+                    // Progress indicator
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("Account Setup")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Brand.textPrimary)
+                            
+                            Spacer()
+                            
+                            Text("\(Int(formProgress * 100))% Complete")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Brand.textSecondary)
                         }
                         
-                        Button(currentStep == steps.count - 1 ? "Complete" : "Continue") {
-                            handleContinue()
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(!isCurrentStepValid || isLoading)
-                    }
+                        ProgressView(value: formProgress)
+                            .tint(Brand.primaryBlue)
+                            .scaleEffect(x: 1, y: 1.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.gray.opacity(0.2))
+                            )
                 }
                 .padding(.horizontal, 24)
-                
-                Spacer()
-            }
+                .padding(.top, 40)
+                    .opacity(animateFields ? 1.0 : 0.0)
+                    .offset(y: animateFields ? 0 : 20)
+                    .animation(.easeOut(duration: 0.8).delay(0.6), value: animateFields)
+                    
+                    // Enhanced form fields
+                    VStack(spacing: 20) {
+                        EnhancedFirstNameField(firstName: $firstName)
+                            .opacity(animateFields ? 1.0 : 0.0)
+                            .offset(x: animateFields ? 0 : -30)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.8), value: animateFields)
+                        
+                        EnhancedEmailField(email: $email)
+                            .opacity(animateFields ? 1.0 : 0.0)
+                            .offset(x: animateFields ? 0 : -30)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.0), value: animateFields)
+                        
+                        EnhancedPhoneNumberField(phoneNumber: $phoneNumber)
+                            .opacity(animateFields ? 1.0 : 0.0)
+                            .offset(x: animateFields ? 0 : -30)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.2), value: animateFields)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 30)
+                    
+                    Spacer(minLength: 20)
+                    
+                    // Enhanced continue button
+                VStack(spacing: 16) {
+                    Button(action: {
+                        handleContinue()
+                    }) {
+                            HStack(spacing: 12) {
+                            if isLoading {
+                                ProgressView()
+                                        .scaleEffect(0.9)
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else if showSuccessAnimation {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(.white)
+                            } else {
+                                Text("Create Account")
+                                        .font(.system(size: 18, weight: .semibold))
+                                
+                                Image(systemName: "arrow.right")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
             .background(
+                                ZStack {
+                                    // Base gradient
                 LinearGradient(
-                    colors: [Color.blue.opacity(0.05), Color.purple.opacity(0.05)],
+                                        colors: isFormValid ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.3), Color.gray.opacity(0.2)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-            )
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+                                    
+                                    // Shimmer effect when valid
+                                    if isFormValid && !isLoading {
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.3), Color.clear, Color.white.opacity(0.3)],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                        .offset(x: showSuccessAnimation ? 300 : -300)
+                                        .animation(.linear(duration: 1.5).repeatForever(autoreverses: false), value: showSuccessAnimation)
+                                    }
+                                }
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .shadow(
+                                color: isFormValid ? Brand.primaryBlue.opacity(0.3) : Color.clear,
+                                radius: isFormValid ? 12 : 0,
+                                x: 0,
+                                y: 6
+                            )
+                        }
+                        .disabled(!isFormValid || isLoading)
+                        .scaleEffect(isFormValid ? 1.0 : 0.95)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isFormValid)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isLoading)
+                        
+                        // Simplified terms
+                        HStack(spacing: 8) {
+                            Button("Terms of Service") {
+                                // Handle terms
+                            }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Brand.primaryBlue)
+                            
+                            Text("•")
+                                .font(.system(size: 14))
+                                .foregroundColor(Brand.textSecondary)
+                            
+                            Button("Privacy Policy") {
+                                // Handle privacy
+                            }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Brand.primaryBlue)
+                        }
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 30)
+                    .opacity(animateFields ? 1.0 : 0.0)
+                    .offset(y: animateFields ? 0 : 30)
+                    .animation(.easeOut(duration: 0.8).delay(1.4), value: animateFields)
                 }
             }
+            .scrollIndicators(.hidden)
+        }
+        .onAppear {
+            withAnimation {
+                animateFields = true
+            }
+            // Start background animation immediately and keep it running
+            animateBackground = true
         }
     }
     
-    private var isCurrentStepValid: Bool {
-        switch currentStep {
-        case 0:
-            return !phoneNumber.isEmpty && phoneNumber.count >= 10
-        case 1:
-            return !email.isEmpty && email.contains("@")
-        case 2:
-            return !username.isEmpty && username.count >= 3
-        default:
-            return false
-        }
+    private var isFormValid: Bool {
+        let phoneDigits = phoneNumber.filter { $0.isNumber }
+        return !firstName.isEmpty && firstName.count >= 2 && 
+               !email.isEmpty && email.contains("@") && email.hasSuffix(".edu") &&
+               !phoneNumber.isEmpty && phoneDigits.count >= 10
     }
     
     private func handleContinue() {
-        if currentStep < steps.count - 1 {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                currentStep += 1
-            }
-        } else {
-            // Complete registration
-            isLoading = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                // Save all registration data to store
-                store.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
-                store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-                store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        isLoading = true
+        
+        // Success animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            showSuccessAnimation = true
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Save registration data to store
+            store.username = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+            store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            isLoading = false
+            
+            // Call completion handler to dismiss onboarding and go to homepage
+            onComplete()
+        }
+    }
+}
+
+// MARK: - Enhanced Form Fields
+
+struct EnhancedFirstNameField: View {
+    @Binding var firstName: String
+    @FocusState private var isFocused: Bool
+    @State private var animateIcon = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Brand.primaryBlue)
+                    .scaleEffect(animateIcon ? 1.2 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: animateIcon)
                 
-                isLoading = false
-                
-                // Call completion handler to dismiss onboarding and go to homepage
-                onComplete()
+                Text("First Name")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Brand.textPrimary)
             }
+            
+            ZStack {
+                // Background with glassmorphism effect
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(
+                                LinearGradient(
+                                    colors: isFocused ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.2), Color.gray.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: isFocused ? 2 : 1
+                            )
+                    )
+                    .shadow(
+                        color: isFocused ? Brand.primaryBlue.opacity(0.2) : Color.black.opacity(0.05),
+                        radius: isFocused ? 8 : 4,
+                        x: 0,
+                        y: isFocused ? 4 : 2
+                    )
+                
+                TextField("Enter your first name", text: $firstName)
+                    .focused($isFocused)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled(false)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Brand.textPrimary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
+            }
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    animateIcon = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    animateIcon = false
+                }
+            }
+            
+            // Validation feedback
+            HStack(spacing: 6) {
+                Image(systemName: firstName.count >= 2 ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundColor(firstName.count >= 2 ? Brand.emerald : Color.gray.opacity(0.4))
+                
+                Text(firstName.count >= 2 ? "Looks good!" : "Enter at least 2 characters")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(firstName.count >= 2 ? Brand.emerald : Brand.textSecondary)
+            }
+            .opacity(firstName.isEmpty ? 0 : 1)
+            .animation(.easeInOut(duration: 0.3), value: firstName.isEmpty)
+        }
+    }
+}
+
+struct EnhancedEmailField: View {
+    @Binding var email: String
+    @FocusState private var isFocused: Bool
+    @State private var animateIcon = false
+    
+    private var isValid: Bool {
+        email.contains("@") && email.hasSuffix(".edu") && !email.isEmpty
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "envelope.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Brand.primaryBlue)
+                    .scaleEffect(animateIcon ? 1.2 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: animateIcon)
+                
+                Text("Email Address")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Brand.textPrimary)
+            }
+            
+            ZStack {
+                // Background with glassmorphism effect
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(
+                                LinearGradient(
+                                    colors: isFocused ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.2), Color.gray.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: isFocused ? 2 : 1
+                            )
+                    )
+                    .shadow(
+                        color: isFocused ? Brand.primaryBlue.opacity(0.2) : Color.black.opacity(0.05),
+                        radius: isFocused ? 8 : 4,
+                        x: 0,
+                        y: isFocused ? 4 : 2
+                    )
+                
+                TextField("Enter your .edu email", text: $email)
+                    .focused($isFocused)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Brand.textPrimary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
+            }
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    animateIcon = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    animateIcon = false
+                }
+            }
+            
+            // Validation feedback
+            HStack(spacing: 6) {
+                Image(systemName: isValid ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundColor(isValid ? Brand.emerald : Color.gray.opacity(0.4))
+                
+                Text(isValid ? "Valid .edu email!" : "Must be a .edu email address")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(isValid ? Brand.emerald : Brand.textSecondary)
+            }
+            .opacity(email.isEmpty ? 0 : 1)
+            .animation(.easeInOut(duration: 0.3), value: email.isEmpty)
+        }
+    }
+}
+
+struct EnhancedPhoneNumberField: View {
+    @Binding var phoneNumber: String
+    @FocusState private var isFocused: Bool
+    @State private var animateIcon = false
+    
+    private var isValid: Bool {
+        phoneNumber.filter { $0.isNumber }.count >= 10
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Brand.primaryBlue)
+                    .scaleEffect(animateIcon ? 1.2 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: animateIcon)
+                
+                Text("Phone Number")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Brand.textPrimary)
+            }
+            
+            ZStack {
+                // Background with glassmorphism effect
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(
+                                LinearGradient(
+                                    colors: isFocused ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.2), Color.gray.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: isFocused ? 2 : 1
+                            )
+                    )
+                    .shadow(
+                        color: isFocused ? Brand.primaryBlue.opacity(0.2) : Color.black.opacity(0.05),
+                        radius: isFocused ? 8 : 4,
+                        x: 0,
+                        y: isFocused ? 4 : 2
+                    )
+                
+                TextField("123-456-7890", text: $phoneNumber)
+                    .focused($isFocused)
+                    .keyboardType(.phonePad)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Brand.textPrimary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
+            }
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    animateIcon = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    animateIcon = false
+                }
+            }
+            .onChange(of: phoneNumber) { newValue in
+                // Format phone number with dashes
+                let digits = newValue.filter { $0.isNumber }
+                if digits.count <= 10 {
+                    if digits.count <= 3 {
+                        phoneNumber = digits
+                    } else if digits.count <= 6 {
+                        phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3))"
+                    } else {
+                        phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3).prefix(3))-\(digits.dropFirst(6))"
+                    }
+                }
+            }
+            
+            // Validation feedback
+            HStack(spacing: 6) {
+                Image(systemName: isValid ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundColor(isValid ? Brand.emerald : Color.gray.opacity(0.4))
+                
+                Text(isValid ? "Phone number looks good!" : "Enter a valid phone number")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(isValid ? Brand.emerald : Brand.textSecondary)
+            }
+            .opacity(phoneNumber.isEmpty ? 0 : 1)
+            .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
         }
     }
 }
 
 struct PhoneNumberField: View {
     @Binding var phoneNumber: String
+    @FocusState private var isFocused: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Phone Number")
                 .font(.headline)
+                .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
-            TextField("Enter your phone number", text: $phoneNumber)
+            TextField("123-456-7890", text: $phoneNumber)
+                .focused($isFocused)
                 .keyboardType(.phonePad)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled(true)
-                .padding(16)
+                .font(.system(size: 18, weight: .medium))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 20)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemBackground))
-                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(isFocused ? Color.blue.opacity(0.8) : (phoneNumber.count >= 10 ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (phoneNumber.count >= 10 ? 2 : 1))
+                        )
+                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+                )
+                .onChange(of: phoneNumber) { newValue in
+                    // Format phone number with dashes
+                    let digits = newValue.filter { $0.isNumber }
+                    if digits.count <= 10 {
+                        if digits.count <= 3 {
+                            phoneNumber = digits
+                        } else if digits.count <= 6 {
+                            phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3))"
+                        } else {
+                            phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3).prefix(3))-\(digits.dropFirst(6))"
+                        }
+                    }
+                }
+            
+            HStack(spacing: 8) {
+                Image(systemName: "phone.fill")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                
+                Text("We'll use this to verify your account")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+}
+
+struct FirstNameField: View {
+    @Binding var firstName: String
+    @FocusState private var isFocused: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("First Name")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+            
+            TextField("Enter your first name", text: $firstName)
+                .focused($isFocused)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled(false)
+                .font(.system(size: 18, weight: .medium))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(isFocused ? Color.blue.opacity(0.8) : (firstName.count >= 2 ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (firstName.count >= 2 ? 2 : 1))
+                        )
+                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
                 )
             
-            Text("We'll use this to verify your account")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "person.fill")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                
+                Text("This will be your display name")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 4)
         }
     }
 }
 
 struct EmailField: View {
     @Binding var email: String
+    @FocusState private var isFocused: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Email Address")
                 .font(.headline)
+                .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
-            TextField("Enter your email", text: $email)
+            TextField("Enter your .edu email", text: $email)
+                .focused($isFocused)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled(true)
-                .padding(16)
+                .font(.system(size: 18, weight: .medium))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 20)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemBackground))
-                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(isFocused ? Color.blue.opacity(0.8) : (email.contains("@") && email.hasSuffix(".edu") && !email.isEmpty ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (email.contains("@") && email.hasSuffix(".edu") && !email.isEmpty ? 2 : 1))
+                        )
+                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
                 )
             
-            Text("We'll send you updates about your progress")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "envelope.fill")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                
+                Text("Must be a .edu email address")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 4)
         }
     }
 }
@@ -2165,24 +2877,32 @@ struct UsernameField: View {
     @Binding var username: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Username")
                 .font(.headline)
+                .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
             TextField("Choose a username", text: $username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled(true)
-                .padding(16)
+                .font(.system(size: 18, weight: .medium))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 20)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemBackground))
-                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
                 )
             
             Text("This will be shown on your profile and leaderboard")
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
         }
     }
 }
@@ -2229,14 +2949,16 @@ struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var showRegistration = false
     
+    let onComplete: () -> Void
+    
     var body: some View {
         ZStack {
         VStack(spacing: 0) {
             TabView(selection: $currentPage) {
                 OnboardingPage(
-                    title: "Welcome to Froth",
-                    subtitle: "The Duolingo for Finance & Consulting",
-                    description: "Master investment banking, consulting, and technical skills through gamified learning.",
+                    title: "Welcome to Alpha",
+                    subtitle: "The Duolingo for Finance Technicals",
+                    description: "Master investment banking and technical skills through gamified learning.",
                     icon: "graduationcap.fill",
                     color: Color.mint
                 )
@@ -2256,7 +2978,7 @@ struct OnboardingView: View {
                     subtitle: "Gamified Learning Experience",
                     description: "Earn XP, unlock achievements, and compete with others on the leaderboard.",
                     icon: "chart.line.uptrend.xyaxis",
-                    color: .purple
+                    color: Color.orange
                 )
                 .tag(2)
             }
@@ -2328,7 +3050,7 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $showRegistration) {
             RegistrationView(onComplete: {
-                dismiss() // Dismiss onboarding to go to homepage
+                onComplete() // Call the OnboardingView's completion handler
             })
                 .environmentObject(store)
         }
@@ -2392,20 +3114,109 @@ struct OnboardingPage: View {
 struct AchievementsView: View {
     @EnvironmentObject var store: AppStore
     
+    var quickWins: [Achievement] {
+        ContentProvider.achievements.filter { achievement in
+            achievement.xpReward <= 250
+        }
+    }
+    
+    var mediumTerm: [Achievement] {
+        ContentProvider.achievements.filter { achievement in
+            achievement.xpReward > 250 && achievement.xpReward <= 900
+        }
+    }
+    
+    var longTerm: [Achievement] {
+        ContentProvider.achievements.filter { achievement in
+            achievement.xpReward > 900
+        }
+    }
+    
     var body: some View {
         NavigationView {
             ScrollView {
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 16) {
-                    ForEach(ContentProvider.achievements) { achievement in
-                        AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
+                VStack(spacing: 24) {
+                    // Quick Wins Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "bolt.fill")
+                                .foregroundColor(.yellow)
+                                .font(.title3)
+                            Text("Quick Wins")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.primary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 16) {
+                            ForEach(quickWins) { achievement in
+                                AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // Medium-Term Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "target")
+                                .foregroundColor(.blue)
+                                .font(.title3)
+                            Text("Medium-Term Goals")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.primary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 16) {
+                            ForEach(mediumTerm) { achievement in
+                                AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // Long-Term Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "crown.fill")
+                                .foregroundColor(.orange)
+                                .font(.title3)
+                            Text("Long-Term Mastery")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.primary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 16) {
+                            ForEach(longTerm) { achievement in
+                                AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
+                            }
+                        }
+                        .padding(.horizontal, 20)
                     }
                 }
-                .padding(20)
+                .padding(.vertical, 20)
             }
-            .background(Brand.onboardingBackgroundGradient)
+            .background(Color(.systemGray6))
         }
     }
 }
@@ -2415,57 +3226,51 @@ struct AchievementCard: View {
     let isUnlocked: Bool
     
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: isUnlocked ? [achievement.rarity.color, achievement.rarity.color.opacity(0.7)] : [.gray.opacity(0.3), .gray.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 60, height: 60)
+                    .fill(isUnlocked ? achievement.rarity.gradient : LinearGradient(
+                        colors: [Color.gray.opacity(0.3), Color.gray.opacity(0.1)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 35, height: 35)
                 
                 Image(systemName: achievement.icon)
                     .foregroundColor(isUnlocked ? .white : .gray)
-                    .font(.title2)
+                    .font(.system(size: 16, weight: .medium))
             }
             
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Text(achievement.title)
-                    .font(Brand.subheadlineFont)
+                    .font(.system(size: 11, weight: .bold))
                     .multilineTextAlignment(.center)
-                    .foregroundColor(isUnlocked ? Brand.textPrimary : Brand.textSecondary)
+                    .foregroundColor(isUnlocked ? .primary : .secondary)
+                    .lineLimit(2)
                 
                 Text(achievement.description)
-                    .font(Brand.smallFont)
-                    .foregroundColor(Brand.textSecondary)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
                 
                 if isUnlocked {
-                    HStack {
-                        Image(systemName: "star.fill")
-                            .foregroundColor(Brand.lavender)
-                            .font(.caption)
-                        Text("+\(achievement.xpReward) XP")
-                            .font(Brand.smallFont)
-                            .foregroundColor(Brand.lavender)
-                    }
+                    Text("+\(achievement.xpReward) XP")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.orange)
                 }
             }
         }
-        .padding(16)
+        .frame(width: 100, height: 120)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Material.ultraThinMaterial)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemBackground))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(isUnlocked ? achievement.rarity.color.opacity(0.3) : .gray.opacity(0.2), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                 )
         )
-        .scaleEffect(isUnlocked ? 1.0 : 0.95)
-        .opacity(isUnlocked ? 1.0 : 0.7)
     }
 }
 
@@ -3119,6 +3924,9 @@ struct LessonPlayView: View {
         userAnswers.append(correct)
         selectedAnswers.append(selectedIndex)
         
+        // Mark that user has attempted a question
+        store.hasAttemptedQuestion = true
+        
         if correct {
             score += 1
             store.handleCorrectAnswer()
@@ -3153,6 +3961,11 @@ struct LessonPlayView: View {
         let ratio = Double(score) / Double(max(1, lesson.questions.count))
         let earned = Int(Double(lesson.xpReward) * (0.5 + 0.5 * ratio))
         store.awardXP(earned)
+        
+        // Track study time (estimated based on lesson time)
+        store.totalStudyTime += lesson.estimatedTime
+        store.updateDailyGoalProgress(action: .studyTime(lesson.estimatedTime))
+        
         // Only unlock next road if user scores at least 75%
         if ratio >= 0.75 {
             store.markLessonCompleted(lesson.id)
@@ -3162,6 +3975,8 @@ struct LessonPlayView: View {
         
         if ratio == 1.0 {
             store.perfectLessons += 1
+            // Update daily goals for perfect lesson
+            store.updateDailyGoalProgress(action: .perfectLesson)
         }
         
         // Navigate back to quest page
@@ -3190,11 +4005,12 @@ struct LessonResultsView: View {
     }
     
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: 0) {
             Spacer()
+                .frame(height: 60)
             
-            // Results header
-            VStack(spacing: 16) {
+            // Results header with better spacing
+            VStack(spacing: 32) {
                 ZStack {
                     Circle()
                         .fill(
@@ -3216,7 +4032,7 @@ struct LessonResultsView: View {
                 .opacity(animateResults ? 1.0 : 0.0)
                 .animation(.easeOut(duration: 0.8), value: animateResults)
                 
-                VStack(spacing: 8) {
+                VStack(spacing: 16) {
                     Text(percentage >= 0.8 ? "Excellent!" : "Good Job!")
                         .font(.largeTitle.weight(.bold))
                         .foregroundColor(.primary)
@@ -3230,15 +4046,18 @@ struct LessonResultsView: View {
                 .animation(.easeOut(duration: 0.8).delay(0.3), value: animateResults)
             }
             
-            // Small XP indicator (optional - can be removed entirely)
+            Spacer()
+                .frame(height: 40)
+            
+            // XP indicator with better spacing
             if percentage >= 0.8 {
-                HStack(spacing: 4) {
+                HStack(spacing: 8) {
                     Image(systemName: "star.fill")
                         .foregroundColor(.yellow)
-                        .font(.caption)
+                        .font(.title3)
                     
                     Text("+\(earnedXP) XP")
-                        .font(.caption.weight(.medium))
+                        .font(.title3.weight(.medium))
                         .foregroundColor(.secondary)
                 }
                 .opacity(animateResults ? 1.0 : 0.0)
@@ -3246,33 +4065,22 @@ struct LessonResultsView: View {
                 .animation(.easeOut(duration: 0.8).delay(0.6), value: animateResults)
             }
             
-            // Action buttons
-            VStack(spacing: 16) {
+            Spacer()
+                .frame(height: 60)
+            
+            // Action buttons with better spacing
+            VStack(spacing: 24) {
+                // Continue as plain black text button
                 Button(action: onFinish) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text("Continue")
-                            .fontWeight(.bold)
+                            .font(.title2.weight(.semibold))
                         Image(systemName: "arrow.right")
-                            .fontWeight(.bold)
+                            .font(.title2.weight(.semibold))
                     }
-                    .foregroundColor(.white)
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 32)
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.97, green: 0.73, blue: 0.66), // soft coral/red
-                                Color(red: 0.78, green: 0.89, blue: 0.98)   // soft sky blue
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(25)
-                    .shadow(color: Color(red: 0.97, green: 0.73, blue: 0.66).opacity(0.3), radius: 8, x: 0, y: 4)
+                    .foregroundColor(.black)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .scaleEffect(animateResults ? 1.0 : 0.8)
                 .opacity(animateResults ? 1.0 : 0.0)
                 .animation(.easeOut(duration: 0.8).delay(0.9), value: animateResults)
                 
@@ -3280,7 +4088,7 @@ struct LessonResultsView: View {
                     showReview = true
                 }
                 .foregroundColor(.blue)
-                .fontWeight(.medium)
+                .font(.title3.weight(.medium))
                 .opacity(animateResults ? 1.0 : 0.0)
                 .animation(.easeOut(duration: 0.8).delay(1.0), value: animateResults)
                 
@@ -3289,15 +4097,16 @@ struct LessonResultsView: View {
                         // Handle retry
                     }
                     .foregroundColor(Color.mint)
-                    .fontWeight(.medium)
+                    .font(.title3.weight(.medium))
                     .opacity(animateResults ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.8).delay(1.2), value: animateResults)
                 }
             }
             
             Spacer()
+                .frame(height: 80)
         }
-        .padding(20)
+        .padding(.horizontal, 32)
         .onAppear {
             animateResults = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -3360,21 +4169,18 @@ struct ReviewView: View {
                 }
             }
         }
-        .sheet(item: Binding<QuestionDetailItem?>(
-            get: { 
-                if let index = selectedQuestionIndex {
-                    return QuestionDetailItem(index: index)
-                }
-                return nil
-            },
-            set: { _ in selectedQuestionIndex = nil }
-        )) { item in
-            QuestionDetailView(
-                question: lesson.questions[item.index],
-                questionNumber: item.index + 1,
-                userSelectedIndex: item.index < selectedAnswers.count ? selectedAnswers[item.index] : -1,
-                isCorrect: item.index < userAnswers.count ? userAnswers[item.index] : false
-            )
+        .sheet(isPresented: Binding<Bool>(
+            get: { selectedQuestionIndex != nil },
+            set: { if !$0 { selectedQuestionIndex = nil } }
+        )) {
+            if let index = selectedQuestionIndex {
+                QuestionDetailView(
+                    question: lesson.questions[index],
+                    questionNumber: index + 1,
+                    userSelectedIndex: index < selectedAnswers.count ? selectedAnswers[index] : -1,
+                    isCorrect: index < userAnswers.count ? userAnswers[index] : false
+                )
+            }
         }
     }
 }
@@ -3438,8 +4244,13 @@ struct ReviewQuestionRow: View {
 }
 
 struct QuestionDetailItem: Identifiable {
-    let id = UUID()
+    let id: Int
     let index: Int
+    
+    init(index: Int) {
+        self.id = index
+        self.index = index
+    }
 }
 
 struct QuestionDetailView: View {
@@ -3946,93 +4757,130 @@ struct CardQuestionView: View {
 struct UnlockAnimationView: View {
     let lessonIndex: Int
     let onDismiss: () -> Void
-    @State private var animate = false
-    @State private var showSparkles = false
-    @State private var showUnlockSymbol = false
+    @State private var lockAppeared = false
+    @State private var lockShaking = false
+    @State private var lockOpened = false
+    @State private var textVisible = false
+    @State private var showStars = false
+    @State private var starsAnimate = false
+    @State private var fadeOutBackground = false
     
     var body: some View {
         ZStack {
-            // Semi-transparent background
-            Color.black.opacity(0.3)
+            // Enhanced background with blur
+            Color.black.opacity(fadeOutBackground ? 0.0 : 0.6)
                 .ignoresSafeArea()
+                .blur(radius: fadeOutBackground ? 0 : 2)
+                .animation(.easeOut(duration: 0.8), value: fadeOutBackground)
             
-            VStack(spacing: 20) {
-                // Unlock icon with animation
+            VStack(spacing: 40) {
+                // Styled lock animation
                 ZStack {
+                    // Outer glow ring
                     Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [Color.yellow.opacity(0.8), Color.orange.opacity(0.6)],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: 50
-                            )
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.3),
+                                    Color.white.opacity(0.1),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 3
                         )
                         .frame(width: 100, height: 100)
-                        .scaleEffect(showUnlockSymbol ? 1.2 : 0.8)
-                        .opacity(showUnlockSymbol ? 1.0 : 0.0)
+                        .scaleEffect(lockAppeared ? 1.0 : 0.8)
+                        .opacity(lockAppeared ? 1.0 : 0.0)
+                        .animation(.easeOut(duration: 0.8), value: lockAppeared)
                     
-                    Image(systemName: "lock.open.fill")
-                        .font(.system(size: 40, weight: .bold))
+                    // Lock icon with enhanced styling
+                    Image(systemName: lockOpened ? "lock.open.fill" : "lock.fill")
+                        .font(.system(size: 50, weight: .bold))
                         .foregroundColor(.white)
-                        .scaleEffect(showUnlockSymbol ? 1.0 : 0.5)
-                        .opacity(showUnlockSymbol ? 1.0 : 0.0)
+                        .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+                        .scaleEffect(lockAppeared ? 1.0 : 0.7)
+                        .offset(x: lockShaking ? 3 : 0)
+                        .animation(.spring(response: 0.6, dampingFraction: 0.7), value: lockAppeared)
+                        .animation(.easeInOut(duration: 0.08).repeatCount(4, autoreverses: true), value: lockShaking)
+                        .animation(.easeOut(duration: 0.4), value: lockOpened)
                 }
+                .opacity(showStars ? 0.0 : 1.0)
+                .animation(.easeOut(duration: 0.5), value: showStars)
                 
-                // Unlock text
+                // Clean unlock text
                 VStack(spacing: 8) {
                     Text("Level Unlocked!")
-                        .font(.title2.weight(.bold))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                    
-                    Text("Accounting Basics - Level \(lessonIndex + 1)")
-                        .font(.headline.weight(.medium))
-                        .foregroundColor(.white.opacity(0.9))
+                        .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 2)
                 }
-                .opacity(showUnlockSymbol ? 1.0 : 0.0)
-                .offset(y: showUnlockSymbol ? 0 : 20)
+                .opacity(textVisible ? 1.0 : 0.0)
+                .offset(y: textVisible ? 0 : 20)
+                .animation(.spring(response: 0.8, dampingFraction: 0.8), value: textVisible)
+                .opacity(showStars ? 0.0 : 1.0)
+                .animation(.easeOut(duration: 0.5), value: showStars)
             }
-            .scaleEffect(showUnlockSymbol ? 1.0 : 0.8)
-            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: showUnlockSymbol)
             
-            // Sparkle effects
-            if showSparkles {
-                ForEach(0..<8, id: \.self) { index in
-                    Circle()
-                        .fill(Color.yellow)
-                        .frame(width: 4, height: 4)
-                        .offset(
-                            x: CGFloat.random(in: -100...100),
-                            y: CGFloat.random(in: -100...100)
-                        )
-                        .opacity(showSparkles ? 1.0 : 0.0)
-                        .scaleEffect(showSparkles ? 1.0 : 0.0)
-                        .animation(.easeOut(duration: 0.8).delay(Double(index) * 0.1), value: showSparkles)
+            // Star celebration animation (same as CelebrationView)
+            if showStars {
+                ZStack {
+                    ForEach(0..<20, id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .foregroundColor(.yellow)
+                            .font(.title2)
+                            .offset(
+                                x: CGFloat.random(in: -200...200),
+                                y: CGFloat.random(in: -400...0)
+                            )
+                            .scaleEffect(starsAnimate ? 1.5 : 0.5)
+                            .opacity(starsAnimate ? 0 : 1)
+                            .animation(
+                                .easeOut(duration: 2.0)
+                                .delay(Double.random(in: 0...1)),
+                                value: starsAnimate
+                            )
+                    }
+                }
+                .opacity(starsAnimate ? 0.0 : 1.0)
+                .animation(.easeOut(duration: 0.5).delay(1.5), value: starsAnimate)
+                .onAppear {
+                    starsAnimate = true
                 }
             }
         }
         .onAppear {
-            // Phase 1: Show unlock symbol
-            showUnlockSymbol = true
+            // Start animation sequence
+            lockAppeared = true
             
-            // Phase 2: Hide unlock symbol after 2 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                showUnlockSymbol = false
+            // Lock shaking (anticipation)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                lockShaking = true
             }
             
-            // Phase 3: Show sparkles celebration after unlock disappears
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                showSparkles = true
+            // Lock opens
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                lockOpened = true
             }
             
-            // Phase 4: Hide sparkles after celebration
+            // Text appears
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+                textVisible = true
+            }
+            
+            // Hide lock and text, show stars
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) {
+                showStars = true
+            }
+            
+            // Start background fade out before dismissing
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                showSparkles = false
+                fadeOutBackground = true
             }
             
-            // Phase 5: Dismiss entire animation and return to normal screen
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
-                animate = false
+            // Auto-dismiss after background fades out
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.8) {
                 onDismiss()
             }
         }

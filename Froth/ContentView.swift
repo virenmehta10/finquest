@@ -136,6 +136,35 @@ struct Achievement: Identifiable, Codable {
             case .legendary: return .orange
             }
         }
+        
+        var gradient: LinearGradient {
+            switch self {
+            case .common:
+                return LinearGradient(
+                    colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.6)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .rare:
+                return LinearGradient(
+                    colors: [Color.blue.opacity(0.9), Color.cyan.opacity(0.7)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .epic:
+                return LinearGradient(
+                    colors: [Color.purple.opacity(0.9), Color.pink.opacity(0.7)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .legendary:
+                return LinearGradient(
+                    colors: [Color.orange.opacity(0.9), Color.yellow.opacity(0.7)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
     }
     
     init(title: String, description: String, icon: String, xpReward: Int, rarity: Rarity, requirements: [String]) {
@@ -146,6 +175,95 @@ struct Achievement: Identifiable, Codable {
         self.xpReward = xpReward
         self.rarity = rarity
         self.requirements = requirements
+    }
+}
+
+// MARK: - Daily Goals System
+
+struct DailyGoal: Identifiable, Codable {
+    let id: UUID
+    let title: String
+    let description: String
+    let type: DailyGoalType
+    let xpReward: Int
+    let icon: String
+    let targetValue: Int
+    var currentProgress: Int
+    var isCompleted: Bool
+    let createdAt: Date
+    
+    enum DailyGoalType: String, Codable, CaseIterable {
+        case simple = "Simple"
+        case moderate = "Moderate"
+        case advanced = "Advanced"
+        
+        var color: Color {
+            switch self {
+            case .simple: return Brand.primaryBlue
+            case .moderate: return Brand.gamificationAccent
+            case .advanced: return Brand.gold
+            }
+        }
+        
+        var gradient: LinearGradient {
+            switch self {
+            case .simple:
+                return LinearGradient(
+                    colors: [
+                        Brand.primaryBlue.opacity(0.7),
+                        Brand.softBlue.opacity(0.6),
+                        Brand.lightBlue.opacity(0.5)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .moderate:
+                return LinearGradient(
+                    colors: [
+                        Brand.gamificationAccent.opacity(0.6),
+                        Brand.lightCoral.opacity(0.5),
+                        Brand.primaryBlue.opacity(0.4)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .advanced:
+                return LinearGradient(
+                    colors: [
+                        Brand.gold.opacity(0.6),
+                        Brand.emerald.opacity(0.5),
+                        Brand.gamificationAccent.opacity(0.4)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
+        
+        var xpReward: Int {
+            switch self {
+            case .simple: return 15
+            case .moderate: return 30
+            case .advanced: return 50
+            }
+        }
+    }
+    
+    init(title: String, description: String, type: DailyGoalType, icon: String, targetValue: Int) {
+        self.id = UUID()
+        self.title = title
+        self.description = description
+        self.type = type
+        self.xpReward = type.xpReward
+        self.icon = icon
+        self.targetValue = targetValue
+        self.currentProgress = 0
+        self.isCompleted = false
+        self.createdAt = Date()
+    }
+    
+    var progressPercentage: Double {
+        min(1.0, Double(currentProgress) / Double(targetValue))
     }
 }
 
@@ -190,7 +308,7 @@ final class AppStore: ObservableObject {
     @Published var pointsEarnedThisSession: Int = 0
     @Published var showStreakCelebration: Bool = false
     @Published var streakMilestoneHit: Int? = nil
-    @Published var selectedTheme: AppTheme = .froth
+    @Published var selectedTheme: AppTheme = .alpha
     @Published var notificationsEnabled: Bool = true
     @Published var soundEnabled: Bool = true
     @Published var hapticsEnabled: Bool = true
@@ -198,8 +316,22 @@ final class AppStore: ObservableObject {
     @Published var completedModules: Set<String> = []
     @Published var lastLessonID: UUID? = nil
     @Published var shouldShowUnlockAnimation: Bool = false
+    @Published var isProUser: Bool = false
+    @Published var proSubscriptionExpiryDate: Date? = nil
+    
+    // Learning Progress
+    @Published var hasAttemptedQuestion: Bool = false
+    
+    // Daily Goals
+    @Published var dailyGoals: [DailyGoal] = []
+    @Published var lastDailyGoalResetDate: Date? = nil
+    @Published var totalDailyGoalsCompleted: Int = 0
+    @Published var todayDailyGoalsXP: Int = 0
 
     private var cancellables = Set<AnyCancellable>()
+    
+    // Preview mode flag to prevent crashes in SwiftUI previews
+    var isPreviewMode: Bool = false
 
     static let storageKey = "FrothAppStore_v2"
     
@@ -207,14 +339,14 @@ final class AppStore: ObservableObject {
         case system = "System"
         case light = "Light"
         case dark = "Dark"
-        case froth = "Froth"
+        case alpha = "Alpha"
         
         var colorScheme: ColorScheme? {
             switch self {
             case .system: return nil
             case .light: return .light
             case .dark: return .dark
-            case .froth: return .dark
+            case .alpha: return .dark
             }
         }
     }
@@ -231,7 +363,7 @@ final class AppStore: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func configureFromLoadedData(xp: Int, streakDays: Int, lastPracticeDate: Date?, completedLessonIDs: Set<UUID>, username: String, level: Int, achievements: Set<UUID>, weeklyGoal: Int, currentWeekXP: Int, studyStreak: Int, lastStudyDate: Date?, dailyGoal: Int, currentDayXP: Int, totalStudyTime: Int, perfectLessons: Int, currentStreak: Int, longestStreak: Int, selectedTheme: AppTheme, notificationsEnabled: Bool, soundEnabled: Bool, hapticsEnabled: Bool) {
+    func configureFromLoadedData(xp: Int, streakDays: Int, lastPracticeDate: Date?, completedLessonIDs: Set<UUID>, username: String, level: Int, achievements: Set<UUID>, weeklyGoal: Int, currentWeekXP: Int, studyStreak: Int, lastStudyDate: Date?, dailyGoal: Int, currentDayXP: Int, totalStudyTime: Int, perfectLessons: Int, currentStreak: Int, longestStreak: Int, selectedTheme: AppTheme, notificationsEnabled: Bool, soundEnabled: Bool, hapticsEnabled: Bool, isProUser: Bool, proSubscriptionExpiryDate: Date?, hasAttemptedQuestion: Bool, dailyGoals: [DailyGoal]? = nil, lastDailyGoalResetDate: Date? = nil, totalDailyGoalsCompleted: Int? = nil, todayDailyGoalsXP: Int? = nil) {
         self.xp = xp
         self.streakDays = streakDays
         self.lastPracticeDate = lastPracticeDate
@@ -253,12 +385,25 @@ final class AppStore: ObservableObject {
         self.notificationsEnabled = notificationsEnabled
         self.soundEnabled = soundEnabled
         self.hapticsEnabled = hapticsEnabled
+        self.isProUser = isProUser
+        self.proSubscriptionExpiryDate = proSubscriptionExpiryDate
+        self.hasAttemptedQuestion = hasAttemptedQuestion
+        self.dailyGoals = dailyGoals ?? []
+        self.lastDailyGoalResetDate = lastDailyGoalResetDate
+        self.totalDailyGoalsCompleted = totalDailyGoalsCompleted ?? 0
+        self.todayDailyGoalsXP = todayDailyGoalsXP ?? 0
     }
 
     func awardXP(_ amount: Int) {
         xp += amount
         level = AppStore.calculateLevel(xp: xp)
         updateStreakIfNeeded()
+        
+        // Update daily goals progress
+        updateDailyGoalProgress(action: .xpEarned(amount))
+        
+        // Check and unlock achievements
+        checkAndUnlockAchievements()
     }
     
     func handleCorrectAnswer() {
@@ -282,16 +427,25 @@ final class AppStore: ObservableObject {
         // Award XP in tandem with points (1:1 for now)
         awardXP(pointsEarned)
         
+        // Update daily goals progress
+        updateDailyGoalProgress(action: .questionCorrect)
+        
         // Check for streak milestones
         checkStreakMilestones()
         
-        save()
+        // Save changes (with preview mode check)
+        if !isPreviewMode {
+            save()
+        }
     }
     
     func handleIncorrectAnswer() {
         currentQuestionStreak = 0
         // Points don't reset - they persist throughout the session
-        save()
+        // Save changes (with preview mode check)
+        if !isPreviewMode {
+            save()
+        }
     }
     
     func calculateStreakMultiplier() -> Int {
@@ -316,13 +470,17 @@ final class AppStore: ObservableObject {
     func resetSession() {
         currentQuestionStreak = 0
         pointsEarnedThisSession = 0
-        save()
+        // Save changes (with preview mode check)
+        if !isPreviewMode {
+            save()
+        }
     }
 
     private func updateStreakIfNeeded() {
         guard let last = lastPracticeDate else {
             lastPracticeDate = Date()
             streakDays = 1
+            checkAndUnlockAchievements() // Check achievements when streak starts
             return
         }
         if !Calendar.current.isDateInToday(last) {
@@ -332,12 +490,19 @@ final class AppStore: ObservableObject {
                 streakDays = 1
             }
             lastPracticeDate = Date()
+            checkAndUnlockAchievements() // Check achievements when streak updates
         }
     }
 
     func markLessonCompleted(_ id: UUID) {
         completedLessonIDs.insert(id)
         lastLessonID = id
+        
+        // Update daily goals progress
+        updateDailyGoalProgress(action: .lessonCompleted)
+        
+        // Check and unlock achievements
+        checkAndUnlockAchievements()
         
         // Check if module is completed
         let lesson = ContentProvider.sampleLessons.first { $0.id == id }
@@ -348,6 +513,11 @@ final class AppStore: ObservableObject {
             if completedModuleLessons.count == moduleLessons.count {
                 completedModules.insert(lesson.category)
             }
+        }
+        
+        // Save changes (with preview mode check)
+        if !isPreviewMode {
+            save()
         }
     }
     
@@ -365,8 +535,294 @@ final class AppStore: ObservableObject {
     func getCurrentModuleLessons() -> [Lesson] {
         return ContentProvider.sampleLessons.filter { $0.category == currentModule }
     }
+    
+    // MARK: - Pro Access Control
+    
+    func canAccessLesson(lesson: Lesson) -> Bool {
+        // Pro users can access everything
+        if isProUser {
+            return true
+        }
+        
+        // Free users can access first 2 levels of each module
+        let moduleLessons = getCurrentModuleLessons()
+        guard let lessonIndex = moduleLessons.firstIndex(where: { $0.id == lesson.id }) else {
+            return false
+        }
+        
+        // First 2 levels (indices 0 and 1) are free
+        return lessonIndex < 2
+    }
+    
+    func upgradeToProUser(expiryDate: Date) {
+        isProUser = true
+        proSubscriptionExpiryDate = expiryDate
+        // Save changes (with preview mode check)
+        if !isPreviewMode {
+            save()
+        }
+    }
+    
+    func restorePurchases() {
+        // This will be called by StoreKit manager after successful restore
+        // For now, we'll implement basic logic
+        if let expiryDate = proSubscriptionExpiryDate, expiryDate > Date() {
+            isProUser = true
+        } else {
+            isProUser = false
+        }
+        // Save changes (with preview mode check)
+        if !isPreviewMode {
+            save()
+        }
+    }
+    
+    // MARK: - Daily Goals
+    
+    func checkAndResetDailyGoals() {
+        print("🎯 Checking daily goals reset...")
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Check if we need to reset goals (new day)
+        if let lastReset = lastDailyGoalResetDate {
+            if !calendar.isDate(lastReset, inSameDayAs: now) {
+                print("🎯 New day detected - resetting goals")
+                // New day - reset goals
+                generateDailyGoals()
+                lastDailyGoalResetDate = now
+                todayDailyGoalsXP = 0
+                // Save immediately after reset (with preview mode check)
+                if !isPreviewMode {
+                    save()
+                }
+            } else {
+                print("🎯 Same day - keeping existing goals")
+            }
+        } else {
+            print("🎯 First time - generating initial goals")
+            // First time - generate initial goals
+            generateDailyGoals()
+            lastDailyGoalResetDate = now
+            // Save immediately after generation (with preview mode check)
+            if !isPreviewMode {
+                save()
+            }
+        }
+    }
+    
+    func generateDailyGoals() {
+        print("🎯 Generating daily goals...")
+        
+        let simpleGoals = [
+            DailyGoal(title: "Daily Check-in", description: "Open the app today", type: .simple, icon: "house.fill", targetValue: 1),
+            DailyGoal(title: "First Lesson", description: "Complete 1 lesson", type: .simple, icon: "play.circle.fill", targetValue: 1),
+            DailyGoal(title: "Quick XP", description: "Earn 50 XP", type: .simple, icon: "star.fill", targetValue: 50),
+            DailyGoal(title: "Learning Streak", description: "Maintain your streak", type: .simple, icon: "flame.fill", targetValue: 1)
+        ]
+        
+        let moderateGoals = [
+            DailyGoal(title: "Double Down", description: "Complete 3 lessons", type: .moderate, icon: "list.bullet", targetValue: 3),
+            DailyGoal(title: "Question Master", description: "Get 10 questions right", type: .moderate, icon: "checkmark.circle.fill", targetValue: 10),
+            DailyGoal(title: "XP Hunter", description: "Earn 150 XP", type: .moderate, icon: "target", targetValue: 150),
+            DailyGoal(title: "Perfect Streak", description: "Complete 2 lessons perfectly", type: .moderate, icon: "crown.fill", targetValue: 2)
+        ]
+        
+        let advancedGoals = [
+            DailyGoal(title: "Perfect Score", description: "Complete a lesson perfectly", type: .advanced, icon: "crown.fill", targetValue: 1),
+            DailyGoal(title: "Question Streak", description: "Get 15 questions right in a row", type: .advanced, icon: "bolt.fill", targetValue: 15),
+            DailyGoal(title: "XP Champion", description: "Earn 300 XP", type: .advanced, icon: "trophy.fill", targetValue: 300),
+            DailyGoal(title: "Module Master", description: "Complete 5 lessons", type: .advanced, icon: "graduationcap.fill", targetValue: 5)
+        ]
+        
+        // Randomly select one goal from each difficulty
+        dailyGoals = [
+            simpleGoals.randomElement() ?? simpleGoals[0],
+            moderateGoals.randomElement() ?? moderateGoals[0],
+            advancedGoals.randomElement() ?? advancedGoals[0]
+        ]
+        
+        print("🎯 Generated \(dailyGoals.count) daily goals: \(dailyGoals.map { $0.title })")
+    }
+    
+    func updateDailyGoalProgress(action: DailyGoalAction) {
+        var goalsUpdated = false
+        
+        for i in 0..<dailyGoals.count {
+            var goal = dailyGoals[i]
+            
+            if goal.isCompleted { continue }
+            
+            switch action {
+            case .appOpened:
+                if goal.title == "Daily Check-in" {
+                    goal.currentProgress = 1
+                    goalsUpdated = true
+                }
+            case .lessonCompleted:
+                if goal.title.contains("lesson") {
+                    goal.currentProgress += 1
+                    goalsUpdated = true
+                }
+            case .questionCorrect:
+                if goal.title.contains("question") || goal.title.contains("Question") {
+                    goal.currentProgress += 1
+                    goalsUpdated = true
+                }
+            case .xpEarned(let amount):
+                if goal.title.contains("XP") {
+                    goal.currentProgress += amount
+                    goalsUpdated = true
+                }
+            case .perfectLesson:
+                if goal.title == "Perfect Score" {
+                    goal.currentProgress = 1
+                    goalsUpdated = true
+                }
+                if goal.title == "Perfect Streak" {
+                    goal.currentProgress += 1
+                    goalsUpdated = true
+                }
+            case .studyTime(let minutes):
+                // Time-based goals removed - no longer tracking study time
+                break
+            }
+            
+            // Check if goal is completed
+            if goal.currentProgress >= goal.targetValue && !goal.isCompleted {
+                goal.isCompleted = true
+                completeDailyGoal(goal)
+            }
+            
+            dailyGoals[i] = goal
+        }
+        
+        // Save changes if any goals were updated
+        if goalsUpdated && !isPreviewMode {
+            save()
+        }
+    }
+    
+    private func completeDailyGoal(_ goal: DailyGoal) {
+        // Award XP
+        awardXP(goal.xpReward)
+        todayDailyGoalsXP += goal.xpReward
+        totalDailyGoalsCompleted += 1
+        
+        // Haptic feedback
+        #if os(iOS)
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        #endif
+        
+        // Check if all goals completed
+        if dailyGoals.allSatisfy({ $0.isCompleted }) {
+            // Bonus XP for completing all goals
+            let bonusXP = 25
+            awardXP(bonusXP)
+            todayDailyGoalsXP += bonusXP
+        }
+    }
+    
+    enum DailyGoalAction {
+        case appOpened
+        case lessonCompleted
+        case questionCorrect
+        case xpEarned(Int)
+        case perfectLesson
+        case studyTime(Int)
+    }
+    
+    // MARK: - Achievement System
+    
+    func checkAndUnlockAchievements() {
+        let allAchievements = ContentProvider.achievements
+        var newAchievementsUnlocked = false
+        
+        for achievement in allAchievements {
+            // Skip if already unlocked
+            if achievements.contains(achievement.id) { continue }
+            
+            var shouldUnlock = false
+            
+            // Check achievement requirements
+            switch achievement.title {
+            case "First Deal":
+                shouldUnlock = completedLessonIDs.count >= 1
+            case "Quick Learner":
+                shouldUnlock = completedLessonIDs.count >= 5
+            case "Deal Flow":
+                shouldUnlock = completedLessonIDs.count >= 15
+            case "Rising Star":
+                shouldUnlock = xp >= 500
+            case "Knowledge Builder":
+                shouldUnlock = xp >= 2500
+            case "Power Hour":
+                // Check if completed 3 lessons today (simplified - just check total for now)
+                shouldUnlock = completedLessonIDs.count >= 3
+            case "Deal Starter":
+                // Check if completed first IB lesson (simplified - just check if any lesson completed)
+                shouldUnlock = completedLessonIDs.count >= 1
+            case "Week Warrior":
+                shouldUnlock = streakDays >= 7
+            case "Early Bird":
+                shouldUnlock = streakDays >= 3
+            case "Pitch Perfect":
+                // Check if scored 90%+ on 5 lessons (simplified - just check perfect lessons)
+                shouldUnlock = perfectLessons >= 5
+            case "DCF Master":
+                // Check if completed all DCF lessons
+                let dcfLessons = ContentProvider.sampleLessons.filter { $0.category == "DCF Fundamentals" }
+                let completedDCFLessons = dcfLessons.filter { completedLessonIDs.contains($0.id) }
+                shouldUnlock = completedDCFLessons.count == dcfLessons.count && dcfLessons.count > 0
+            case "Valuation Ace":
+                // Check if completed all Valuation Techniques lessons
+                let valuationLessons = ContentProvider.sampleLessons.filter { $0.category == "Valuation Techniques" }
+                let completedValuationLessons = valuationLessons.filter { completedLessonIDs.contains($0.id) }
+                shouldUnlock = completedValuationLessons.count == valuationLessons.count && valuationLessons.count > 0
+            case "Wall Street Ready":
+                // Check if completed all M&A and LBO lessons
+                let maLessons = ContentProvider.sampleLessons.filter { $0.category == "M&A Fundamentals" }
+                let lboLessons = ContentProvider.sampleLessons.filter { $0.category == "LBO Fundamentals" }
+                let completedMALessons = maLessons.filter { completedLessonIDs.contains($0.id) }
+                let completedLBOLessons = lboLessons.filter { completedLessonIDs.contains($0.id) }
+                shouldUnlock = completedMALessons.count == maLessons.count && completedLBOLessons.count == lboLessons.count && maLessons.count > 0 && lboLessons.count > 0
+            default:
+                // For any other achievements, check based on general progress
+                if achievement.requirements.contains("Complete 1 lesson") {
+                    shouldUnlock = completedLessonIDs.count >= 1
+                } else if achievement.requirements.contains("Complete 5 lessons") {
+                    shouldUnlock = completedLessonIDs.count >= 5
+                } else if achievement.requirements.contains("Complete 15 lessons") {
+                    shouldUnlock = completedLessonIDs.count >= 15
+                } else if achievement.requirements.contains("Earn 500 XP") {
+                    shouldUnlock = xp >= 500
+                } else if achievement.requirements.contains("Earn 2,500 XP") {
+                    shouldUnlock = xp >= 2500
+                } else if achievement.requirements.contains("3-day streak") {
+                    shouldUnlock = streakDays >= 3
+                } else if achievement.requirements.contains("7-day streak") {
+                    shouldUnlock = streakDays >= 7
+                }
+            }
+            
+            if shouldUnlock {
+                achievements.insert(achievement.id)
+                awardXP(achievement.xpReward)
+                newAchievementsUnlocked = true
+                print("🏆 Achievement unlocked: \(achievement.title)")
+            }
+        }
+        
+        if newAchievementsUnlocked && !isPreviewMode {
+            save()
+        }
+    }
 
     private func save() {
+        // Skip saving in preview mode to prevent crashes
+        guard !isPreviewMode else { return }
+        
         do {
             let payload = Persisted(
                 xp: xp,
@@ -389,7 +845,14 @@ final class AppStore: ObservableObject {
                 selectedTheme: selectedTheme.rawValue,
                 notificationsEnabled: notificationsEnabled,
                 soundEnabled: soundEnabled,
-                hapticsEnabled: hapticsEnabled
+                hapticsEnabled: hapticsEnabled,
+                isProUser: isProUser,
+                proSubscriptionExpiryDate: proSubscriptionExpiryDate,
+                hasAttemptedQuestion: hasAttemptedQuestion,
+                dailyGoals: dailyGoals,
+                lastDailyGoalResetDate: lastDailyGoalResetDate,
+                totalDailyGoalsCompleted: totalDailyGoalsCompleted,
+                todayDailyGoalsXP: todayDailyGoalsXP
             )
             let data = try JSONEncoder().encode(payload)
             UserDefaults.standard.set(data, forKey: AppStore.storageKey)
@@ -406,7 +869,7 @@ final class AppStore: ObservableObject {
                 let payload = try JSONDecoder().decode(Persisted.self, from: raw)
                 let ids = Set(payload.completedIDs.compactMap { UUID(uuidString: $0) })
                 let achievementIds = Set((payload.achievements ?? []).compactMap { UUID(uuidString: $0) })
-                let theme = AppTheme(rawValue: payload.selectedTheme ?? "froth") ?? .froth
+                let theme = AppTheme(rawValue: payload.selectedTheme ?? "alpha") ?? .alpha
                 
                 store.configureFromLoadedData(
                     xp: payload.xp,
@@ -429,33 +892,54 @@ final class AppStore: ObservableObject {
                     selectedTheme: theme,
                     notificationsEnabled: payload.notificationsEnabled ?? true,
                     soundEnabled: payload.soundEnabled ?? true,
-                    hapticsEnabled: payload.hapticsEnabled ?? true
+                    hapticsEnabled: payload.hapticsEnabled ?? true,
+                    isProUser: payload.isProUser ?? false,
+                    proSubscriptionExpiryDate: payload.proSubscriptionExpiryDate,
+                    hasAttemptedQuestion: payload.hasAttemptedQuestion ?? false,
+                    dailyGoals: payload.dailyGoals,
+                    lastDailyGoalResetDate: payload.lastDailyGoalResetDate,
+                    totalDailyGoalsCompleted: payload.totalDailyGoalsCompleted,
+                    todayDailyGoalsXP: payload.todayDailyGoalsXP
                 )
             } catch {
                 print("Load decode failed", error)
             }
         }
+        
+        // Only check and reset daily goals if they don't exist or reset date is nil
+        if store.dailyGoals.isEmpty || store.lastDailyGoalResetDate == nil {
+            store.checkAndResetDailyGoals()
+        }
+        
         return store
     }
 
     static func calculateLevel(xp: Int) -> Int {
-        // Friendly level curve - tweak to taste
-        // Levels accelerate: level 1: 0-99, level 2-3: up to 300, etc.
-        let base = max(1, Int(floor(sqrt(Double(xp) / 50.0) * 2.0)))
+        // INSANELY challenging level curve - requires MASSIVE amounts of XP per level
+        // Level 1: 0-1,000,000 XP, Level 2: 1,000,001-4,000,000 XP, Level 3: 4,000,001-9,000,000 XP, etc.
+        // Formula: level = floor(sqrt(xp/1000000) + 0.5) + 1
+        // This creates exponential growth: each level requires MASSIVELY more XP
+        let base = max(1, Int(floor(sqrt(Double(xp) / 1000000.0) + 0.5)) + 1)
         return min(max(1, base), 999)
     }
 
     // XP needed to reach a given level based on the same curve as calculateLevel
     static func xpForLevel(_ level: Int) -> Int {
         let safeLevel = max(1, level)
-        // Invert: level = floor(sqrt(xp/50) * 2) ⇒ xp ≈ 50 * (level/2)^2
-        let xpThreshold = 50.0 * pow(Double(safeLevel) / 2.0, 2.0)
+        // Invert: level = floor(sqrt(xp/1000000) + 0.5) + 1 ⇒ xp ≈ 1000000 * (level - 1)^2
+        // This gives us the XP threshold for reaching each level
+        let xpThreshold = 1000000.0 * pow(Double(safeLevel - 1), 2.0)
         return max(0, Int(xpThreshold.rounded()))
     }
 
     // XP threshold for the next level; used for progress bars
     var xpToNextLevel: Int {
-        AppStore.xpForLevel(level + 1)
+        AppStore.xpForLevel(level + 1) - AppStore.xpForLevel(level)
+    }
+    
+    // Current XP progress within the current level
+    var currentLevelProgress: Int {
+        xp - AppStore.xpForLevel(level)
     }
 
     private struct Persisted: Codable {
@@ -480,8 +964,15 @@ final class AppStore: ObservableObject {
         let notificationsEnabled: Bool?
         let soundEnabled: Bool?
         let hapticsEnabled: Bool?
+        let isProUser: Bool?
+        let proSubscriptionExpiryDate: Date?
+        let hasAttemptedQuestion: Bool?
+        let dailyGoals: [DailyGoal]?
+        let lastDailyGoalResetDate: Date?
+        let totalDailyGoalsCompleted: Int?
+        let todayDailyGoalsXP: Int?
         
-        init(xp: Int, streak: Int, lastPractice: Date?, completedIDs: [String], username: String, level: Int, achievements: [String]? = nil, weeklyGoal: Int? = nil, currentWeekXP: Int? = nil, studyStreak: Int? = nil, lastStudyDate: Date? = nil, dailyGoal: Int? = nil, currentDayXP: Int? = nil, totalStudyTime: Int? = nil, perfectLessons: Int? = nil, currentStreak: Int? = nil, longestStreak: Int? = nil, selectedTheme: String? = nil, notificationsEnabled: Bool? = nil, soundEnabled: Bool? = nil, hapticsEnabled: Bool? = nil) {
+        init(xp: Int, streak: Int, lastPractice: Date?, completedIDs: [String], username: String, level: Int, achievements: [String]? = nil, weeklyGoal: Int? = nil, currentWeekXP: Int? = nil, studyStreak: Int? = nil, lastStudyDate: Date? = nil, dailyGoal: Int? = nil, currentDayXP: Int? = nil, totalStudyTime: Int? = nil, perfectLessons: Int? = nil, currentStreak: Int? = nil, longestStreak: Int? = nil, selectedTheme: String? = nil, notificationsEnabled: Bool? = nil, soundEnabled: Bool? = nil, hapticsEnabled: Bool? = nil, isProUser: Bool? = nil, proSubscriptionExpiryDate: Date? = nil, hasAttemptedQuestion: Bool? = nil, dailyGoals: [DailyGoal]? = nil, lastDailyGoalResetDate: Date? = nil, totalDailyGoalsCompleted: Int? = nil, todayDailyGoalsXP: Int? = nil) {
             self.xp = xp
             self.streak = streak
             self.lastPractice = lastPractice
@@ -503,6 +994,13 @@ final class AppStore: ObservableObject {
             self.notificationsEnabled = notificationsEnabled
             self.soundEnabled = soundEnabled
             self.hapticsEnabled = hapticsEnabled
+            self.isProUser = isProUser
+            self.proSubscriptionExpiryDate = proSubscriptionExpiryDate
+            self.hasAttemptedQuestion = hasAttemptedQuestion
+            self.dailyGoals = dailyGoals
+            self.lastDailyGoalResetDate = lastDailyGoalResetDate
+            self.totalDailyGoalsCompleted = totalDailyGoalsCompleted
+            self.todayDailyGoalsXP = todayDailyGoalsXP
         }
     }
 }
@@ -741,11 +1239,11 @@ struct ContentProvider {
     // Accounting Basics Level 1 Questions
     static let accountingBasicsLevel1Questions: [Question] = [
         Question(
-            prompt: "Which statement shows a company's performance over a period of time?",
-            choices: ["Balance Sheet", "Income Statement", "Cash Flow Statement", "Retained Earnings Statement"],
+            prompt: "Which statement shows a company's profitability over a period of time?",
+            choices: ["Cash Flow Statement", "Income Statement", "Balance Sheet", "Retained Earnings Statement"],
             correctIndex: 1,
             hint: nil,
-            explanation: "The Income Statement shows revenue, expenses, and profit over a specific period.",
+            explanation: "The Income Statement reports revenues, expenses, and profit (or loss) over a specific period like a quarter or year. The Balance Sheet is a snapshot at a point in time, while the Cash Flow Statement shows cash movements, not profitability.",
             difficulty: .beginner,
             tags: ["Financial Statements"]
         ),
@@ -754,70 +1252,70 @@ struct ContentProvider {
             choices: ["Profits over a year", "Cash inflows and outflows", "Assets, Liabilities, and Equity at a point in time", "Only cash balances"],
             correctIndex: 2,
             hint: nil,
-            explanation: "The Balance Sheet shows a company's financial position at a specific point in time.",
+            explanation: "The Balance Sheet is a snapshot on a specific date showing what a company owns (assets), owes (liabilities), and the residual value to shareholders (equity). It doesn't show performance over time.",
             difficulty: .beginner,
             tags: ["Financial Statements"]
         ),
         Question(
             prompt: "Which equation must always hold true?",
-            choices: ["Assets = Revenue – Expenses", "Assets = Liabilities + Equity", "Assets = Liabilities – Equity", "Assets = Cash + Equity"],
-            correctIndex: 1,
+            choices: ["Assets = Revenue – Expenses", "Assets = Liabilities – Equity", "Assets = Cash + Equity", "Assets = Liabilities + Equity"],
+            correctIndex: 3,
             hint: nil,
-            explanation: "The fundamental accounting equation: Assets = Liabilities + Equity",
+            explanation: "This is the fundamental accounting equation. Assets (what you own) are always financed by either debt (liabilities) or ownership (equity). The equation always balances.",
             difficulty: .beginner,
             tags: ["Accounting Equation"]
         ),
         Question(
             prompt: "Why do companies need three financial statements instead of one?",
-            choices: ["To hide accounting complexity", "To reconcile profit with cash flow", "To compute book value", "To report dividends separately"],
-            correctIndex: 1,
+            choices: ["To hide accounting complexity", "To compute book value", "To reconcile profit with cash flow", "To report dividends separately"],
+            correctIndex: 2,
             hint: nil,
-            explanation: "The three statements work together to show profitability, financial position, and cash flows.",
+            explanation: "Companies need three statements because profit ≠ cash. The Income Statement shows profitability, the Cash Flow Statement shows actual cash movements, and the Balance Sheet shows financial position. Together they reconcile accrual accounting with cash reality.",
             difficulty: .beginner,
             tags: ["Financial Statements"]
         ),
         Question(
             prompt: "Which statement adjusts Net Income for non-cash and timing differences?",
-            choices: ["Balance Sheet", "Cash Flow Statement", "Income Statement", "Statement of Shareholders' Equity"],
-            correctIndex: 1,
+            choices: ["Balance Sheet", "Income Statement", "Statement of Shareholders' Equity", "Cash Flow Statement"],
+            correctIndex: 3,
             hint: nil,
-            explanation: "The Cash Flow Statement reconciles net income to actual cash generated.",
+            explanation: "The Cash Flow Statement starts with Net Income and adjusts for non-cash items (depreciation, stock-based compensation) and timing differences (working capital changes) to show actual cash generated or used.",
             difficulty: .beginner,
-            tags: ["Cash Flow"]
+            tags: ["Cash Flow Statement"]
         ),
         Question(
             prompt: "Which of the following is not a current asset?",
             choices: ["Cash", "Accounts Receivable", "Inventory", "Goodwill"],
             correctIndex: 3,
             hint: nil,
-            explanation: "Goodwill is an intangible asset, not a current asset.",
+            explanation: "Current assets convert to cash within one year and include cash, A/R, inventory, and prepaid expenses. Goodwill is a long-term intangible asset from acquisitions that doesn't convert to cash.",
             difficulty: .beginner,
-            tags: ["Assets"]
+            tags: ["Balance Sheet"]
         ),
         Question(
             prompt: "What happens when Accounts Payable increases?",
-            choices: ["Cash decreases", "Cash increases", "Revenue decreases", "Equity decreases"],
-            correctIndex: 1,
+            choices: ["Cash decreases", "Revenue decreases", "Cash increases", "Equity decreases"],
+            correctIndex: 2,
             hint: nil,
-            explanation: "Higher payables mean the company owes more but hasn't paid yet, preserving cash.",
+            explanation: "When Accounts Payable increases, the company has received goods/services but hasn't paid yet. Delaying payment means keeping cash longer, so cash increases (or doesn't decrease as much).",
             difficulty: .beginner,
             tags: ["Working Capital"]
         ),
         Question(
-            prompt: "What is the 'bottom line' of the Income Statement?",
+            prompt: "What is the \"bottom line\" of the Income Statement?",
             choices: ["Operating Income", "EBITDA", "Net Income", "Retained Earnings"],
             correctIndex: 2,
             hint: nil,
-            explanation: "Net Income is the final profit figure after all expenses.",
+            explanation: "Net Income is the final line (\"bottom line\") of the Income Statement after all revenues, expenses, interest, and taxes. It represents profit available to shareholders and flows to Retained Earnings on the Balance Sheet.",
             difficulty: .beginner,
             tags: ["Income Statement"]
         ),
         Question(
             prompt: "Which of the following items always appears on the Income Statement?",
-            choices: ["Capital Expenditures", "Interest Expense", "Share Repurchases", "Issuing Debt"],
-            correctIndex: 1,
+            choices: ["Capital Expenditures", "Share Repurchases", "Issuing Debt", "Interest Expense"],
+            correctIndex: 3,
             hint: nil,
-            explanation: "Interest expense is a recurring operating cost shown on the Income Statement.",
+            explanation: "Interest Expense always appears on the Income Statement as a cost of borrowing. CapEx appears on the Cash Flow Statement (investing), while share repurchases and debt issuance are financing activities.",
             difficulty: .beginner,
             tags: ["Income Statement"]
         ),
@@ -826,7 +1324,7 @@ struct ContentProvider {
             choices: ["Depreciation", "COGS", "Dividends", "Taxes"],
             correctIndex: 2,
             hint: nil,
-            explanation: "Dividends are distributions to shareholders, not expenses on the Income Statement.",
+            explanation: "Dividends are a distribution of profits to shareholders, not an expense. They appear on the Cash Flow Statement (financing section) and reduce Retained Earnings, but never hit the Income Statement.",
             difficulty: .beginner,
             tags: ["Income Statement"]
         )
@@ -1735,14 +2233,29 @@ struct ContentProvider {
     ]
     
     static let achievements: [Achievement] = [
-        Achievement(title: "First Steps", description: "Complete your first lesson", icon: "star.fill", xpReward: 50, rarity: .common, requirements: ["Complete 1 lesson"]),
-        Achievement(title: "Streak Master", description: "Maintain a 7-day study streak", icon: "flame.fill", xpReward: 200, rarity: .rare, requirements: ["7-day streak"]),
-        Achievement(title: "Perfectionist", description: "Get 100% on 10 lessons", icon: "checkmark.seal.fill", xpReward: 500, rarity: .epic, requirements: ["10 perfect lessons"]),
-        Achievement(title: "Finance Guru", description: "Complete all Investment Banking lessons", icon: "graduationcap.fill", xpReward: 1000, rarity: .legendary, requirements: ["Complete all IB lessons"]),
-        Achievement(title: "Consulting Expert", description: "Master all case interview frameworks", icon: "brain.head.profile", xpReward: 1000, rarity: .legendary, requirements: ["Complete all consulting lessons"]),
-        Achievement(title: "Speed Demon", description: "Complete 5 lessons in one day", icon: "bolt.fill", xpReward: 300, rarity: .rare, requirements: ["5 lessons in 1 day"]),
-        Achievement(title: "Dedicated Learner", description: "Study for 30 days straight", icon: "calendar", xpReward: 800, rarity: .epic, requirements: ["30-day streak"]),
-        Achievement(title: "XP Collector", description: "Earn 10,000 total XP", icon: "star.circle.fill", xpReward: 1000, rarity: .legendary, requirements: ["10,000 XP"])
+        // Quick Wins (3-7 days)
+        Achievement(title: "First Deal", description: "Complete your first lesson", icon: "star.fill", xpReward: 50, rarity: .common, requirements: ["Complete 1 lesson"]),
+        Achievement(title: "Early Bird", description: "Study 3 days in a row", icon: "sunrise.fill", xpReward: 100, rarity: .common, requirements: ["3-day streak"]),
+        Achievement(title: "Quick Learner", description: "Complete 5 lessons", icon: "bolt.fill", xpReward: 150, rarity: .common, requirements: ["Complete 5 lessons"]),
+        Achievement(title: "Rising Star", description: "Earn 500 XP", icon: "star.circle.fill", xpReward: 200, rarity: .common, requirements: ["Earn 500 XP"]),
+        Achievement(title: "Power Hour", description: "Complete 3 lessons in one day", icon: "clock.fill", xpReward: 250, rarity: .rare, requirements: ["3 lessons in 1 day"]),
+        Achievement(title: "Deal Starter", description: "Complete your first IB lesson", icon: "building.2.fill", xpReward: 200, rarity: .rare, requirements: ["Complete first IB lesson"]),
+        
+        // Medium-Term (1-2 weeks)
+        Achievement(title: "Deal Flow", description: "Complete 15 lessons", icon: "doc.text.fill", xpReward: 400, rarity: .rare, requirements: ["Complete 15 lessons"]),
+        Achievement(title: "Week Warrior", description: "Maintain a 7-day streak", icon: "flame.fill", xpReward: 500, rarity: .rare, requirements: ["7-day streak"]),
+        Achievement(title: "Pitch Perfect", description: "Score 90%+ on 5 lessons", icon: "target", xpReward: 600, rarity: .rare, requirements: ["90%+ on 5 lessons"]),
+        Achievement(title: "Knowledge Builder", description: "Earn 2,500 XP", icon: "brain.head.profile", xpReward: 700, rarity: .epic, requirements: ["Earn 2,500 XP"]),
+        Achievement(title: "DCF Master", description: "Complete all DCF lessons", icon: "chart.line.uptrend.xyaxis", xpReward: 800, rarity: .epic, requirements: ["Complete DCF lessons"]),
+        Achievement(title: "Valuation Ace", description: "Master all valuation lessons", icon: "chart.line.uptrend.xyaxis", xpReward: 900, rarity: .epic, requirements: ["Complete Valuation Techniques lessons"]),
+        
+        // Long-Term (1+ months)
+        Achievement(title: "Investment Banker", description: "Complete 50 lessons", icon: "graduationcap.fill", xpReward: 1200, rarity: .epic, requirements: ["Complete 50 lessons"]),
+        Achievement(title: "Marathon Runner", description: "Maintain a 30-day streak", icon: "calendar", xpReward: 1500, rarity: .legendary, requirements: ["30-day streak"]),
+        Achievement(title: "Elite Performer", description: "Score 95%+ on 20 lessons", icon: "checkmark.seal.fill", xpReward: 1800, rarity: .legendary, requirements: ["95%+ on 20 lessons"]),
+        Achievement(title: "XP Legend", description: "Earn 10,000 total XP", icon: "star.circle.fill", xpReward: 2000, rarity: .legendary, requirements: ["Earn 10,000 XP"]),
+        Achievement(title: "Wall Street Ready", description: "Complete all M&A and LBO lessons", icon: "building.2.fill", xpReward: 2500, rarity: .legendary, requirements: ["Complete all M&A and LBO lessons"]),
+        Achievement(title: "Perfect Record", description: "Get 100% on 15 lessons", icon: "checkmark.circle.fill", xpReward: 3000, rarity: .legendary, requirements: ["100% on 15 lessons"])
     ]
 }
 
@@ -1826,12 +2339,12 @@ struct ModernHomeScrollContent: View {
                             
                             Spacer()
                             
-                            Text("\(store.xp) / \(store.xpToNextLevel)")
+                            Text("\(store.currentLevelProgress) / \(store.xpToNextLevel)")
                                 .font(.system(size: min(12, geometry.size.width * 0.03), weight: .medium))
                                 .foregroundColor(.secondary)
                         }
                         
-                        ProgressView(value: Double(store.xp), total: Double(store.xpToNextLevel))
+                        ProgressView(value: Double(store.currentLevelProgress), total: Double(store.xpToNextLevel))
                             .progressViewStyle(LinearProgressViewStyle(tint: .blue))
                             .scaleEffect(x: 1, y: 2, anchor: .center)
                     }
@@ -2018,51 +2531,73 @@ struct ContentView: View {
     @EnvironmentObject var store: AppStore
     @State private var selection: Int = 0
     @State private var showOnboarding = false
+    @State private var isInitialized = false
 
     var body: some View {
         GeometryReader { geometry in
-            TabView(selection: $selection) {
-                HomeView()
-                    .tabItem {
-                        Label("Home", systemImage: selection == 0 ? "house.fill" : "house")
+            if !isInitialized {
+                // Show loading screen while checking onboarding status
+                ZStack {
+                    Color.white
+                        .ignoresSafeArea(.all)
+                    
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        
+                        Text("Loading...")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
                     }
-                    .tag(0)
-                
-                QuestView()
-                    .tabItem {
-                        Label("Quest", systemImage: selection == 1 ? "map.fill" : "map")
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        if store.xp == 0 && store.completedLessonIDs.isEmpty {
+                            showOnboarding = true
+                        }
+                        isInitialized = true
                     }
-                    .tag(1)
-                
-                AchievementsView()
-                    .tabItem {
-                        Label("Achievements", systemImage: selection == 2 ? "trophy.fill" : "trophy")
-                    }
-                    .tag(2)
-                
-                LeaderboardView()
-                    .tabItem {
-                        Label("Pro", systemImage: selection == 3 ? "chart.bar.fill" : "chart.bar")
-                    }
-                    .tag(3)
-                
-                ProfileView()
-                    .tabItem {
-                        Label("Profile", systemImage: selection == 4 ? "person.crop.circle.fill" : "person.crop.circle")
-                    }
-                    .tag(4)
-                    }
-            .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                }
+            } else if showOnboarding {
+                OnboardingView(onComplete: {
+                    showOnboarding = false
+                })
+            } else {
+                TabView(selection: $selection) {
+                    HomeView(selection: $selection)
+                        .tabItem {
+                            Label("Home", systemImage: selection == 0 ? "house.fill" : "house")
+                        }
+                        .tag(0)
+                    
+                    QuestView()
+                        .tabItem {
+                            Label("Quest", systemImage: selection == 1 ? "map.fill" : "map")
+                        }
+                        .tag(1)
+                    
+                    AchievementsView()
+                        .tabItem {
+                            Label("Achievements", systemImage: selection == 2 ? "trophy.fill" : "trophy")
+                        }
+                        .tag(2)
+                    
+                    LeaderboardView()
+                        .tabItem {
+                            Label("Pro", systemImage: selection == 3 ? "crown.fill" : "crown")
+                        }
+                        .tag(3)
+                    
+                    ProfileView()
+                        .tabItem {
+                            Label("Profile", systemImage: selection == 4 ? "person.crop.circle.fill" : "person.crop.circle")
+                        }
+                        .tag(4)
+                }
+                .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
+                .accentColor(Brand.primaryBlue)
+                .preferredColorScheme(.light)
             }
-        .accentColor(Brand.primaryBlue)
-            .preferredColorScheme(.light)
-        .onAppear {
-            if store.xp == 0 && store.completedLessonIDs.isEmpty {
-                showOnboarding = true
-            }
-        }
-        .sheet(isPresented: $showOnboarding) {
-            OnboardingView()
         }
     }
 }
@@ -2146,7 +2681,13 @@ private struct FintechProgressCard: View {
     let streakDays: Int
     let onPrimaryCTA: () -> Void
     
-    private var progressToNext: Double { min(1.0, Double(xp % 100) / 100.0) }
+    private var progressToNext: Double {
+        let currentLevelXP = AppStore.xpForLevel(level)
+        let nextLevelXP = AppStore.xpForLevel(level + 1)
+        let xpInCurrentLevel = xp - currentLevelXP
+        let xpNeededForNextLevel = nextLevelXP - currentLevelXP
+        return min(1.0, Double(xpInCurrentLevel) / Double(xpNeededForNextLevel))
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -2178,7 +2719,7 @@ private struct FintechProgressCard: View {
                     Text("Level \(level)")
                         .font(.title3.weight(.bold))
                         .foregroundColor(.white)
-                    Text("\(100 - (xp % 100)) XP to next level")
+                    Text("\(AppStore.xpForLevel(level + 1) - xp) XP to next level")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                     HStack(spacing: 12) {
@@ -2313,6 +2854,7 @@ private struct FintechStreakCard: View {
 
 struct HomeView: View {
     @EnvironmentObject var store: AppStore
+    @Binding var selection: Int
     @State private var animateProgress = false
     @State private var showCelebration = false
     @State private var animateHeader = false
@@ -2332,7 +2874,8 @@ struct HomeView: View {
                     navigateToLesson: $navigateToLesson,
                     animateProgress: $animateProgress,
                     pulseAnimation: $pulseAnimation,
-                    animateHeader: $animateHeader
+                    animateHeader: $animateHeader,
+                    selection: $selection
                 )
             }
             .scrollIndicators(.hidden)
@@ -2471,7 +3014,7 @@ private struct HomeScrollContent: View {
                             
                                     // Progress circle with beautiful gradient
                             Circle()
-                                .trim(from: 0, to: min(1.0, Double(store.xp % 100) / 100.0))
+                                .trim(from: 0, to: min(1.0, Double(store.xp - AppStore.xpForLevel(store.level)) / Double(AppStore.xpForLevel(store.level + 1) - AppStore.xpForLevel(store.level))))
                                 .stroke(
                                     LinearGradient(
                                         colors: [
@@ -2490,7 +3033,7 @@ private struct HomeScrollContent: View {
                             
                                     // Center content with professional styling
                                     VStack(spacing: 6) {
-                                Text("\(Int(min(1.0, Double(store.xp % 100) / 100.0) * 100))%")
+                                Text("\(Int(min(1.0, Double(store.xp - AppStore.xpForLevel(store.level)) / Double(AppStore.xpForLevel(store.level + 1) - AppStore.xpForLevel(store.level))) * 100))%")
                                             .font(Brand.largeTitleFont)
                                             .foregroundColor(Brand.textPrimary)
                                         
@@ -2539,7 +3082,7 @@ private struct HomeScrollContent: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(Color.primary.opacity(0.85))
                             
-                            Text(store.lastLessonID == nil && store.completedLessonIDs.isEmpty ? "Start Learning" : "Continue Learning")
+                            Text(store.hasAttemptedQuestion ? "Continue Learning" : "Start Learning")
                                 .font(Brand.buttonFont)
                                 .foregroundColor(Brand.textPrimary)
                         }

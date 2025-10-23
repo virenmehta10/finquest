@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 @main
 struct FrothApp: App {
@@ -20,6 +21,13 @@ struct FrothApp: App {
             .environmentObject(store)
             .preferredColorScheme(store.selectedTheme.colorScheme)
             .buttonStyle(SoftDefaultButtonStyle())
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                // Only check and reset daily goals when app becomes active if needed
+                // This prevents redundant calls when the app is already running
+                if store.dailyGoals.isEmpty || store.lastDailyGoalResetDate == nil {
+                    store.checkAndResetDailyGoals()
+                }
+            }
         }
     }
 }

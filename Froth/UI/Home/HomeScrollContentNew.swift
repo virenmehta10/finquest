@@ -8,6 +8,7 @@ struct HomeScrollContentNew: View {
     @Binding var animateProgress: Bool
     @Binding var pulseAnimation: Bool
     @Binding var animateHeader: Bool
+    @Binding var selection: Int
     
     @State private var animateElements = false
     @State private var floatingOffset: CGFloat = 0
@@ -26,7 +27,7 @@ struct HomeScrollContentNew: View {
                 .ignoresSafeArea(.all)
             
             ScrollView {
-                LazyVStack(spacing: 13) {
+                LazyVStack(spacing: 8) {
                         // Hero Welcome Section
                         HeroWelcomeSection(
                             store: store,
@@ -50,16 +51,17 @@ struct HomeScrollContentNew: View {
                             pendingLesson: $pendingLesson,
                             navigateToLesson: $navigateToLesson,
                             cardIndex: 1,
-                            cardAnimations: $cardAnimations
+                            cardAnimations: $cardAnimations,
+                            selection: $selection
                         )
-                        .padding(.top, -6)
+                        .padding(.top, 12)
                         
                         // Bottom padding
                         Spacer()
-                            .frame(height: 100)
+                            .frame(height: 40)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, -28)
+                .padding(.top, -35)
             }
             .scrollIndicators(.hidden)
         }
@@ -131,13 +133,13 @@ struct HeroWelcomeSection: View {
             VStack(spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(dynamicGreeting) \(store.username)!")
+                        Text("Welcome to Flow!")
                             .font(Brand.subheadlineFont)
                             .foregroundColor(Brand.textPrimary)
                             .scaleEffect(animateHeader ? 1.0 : 0.9)
                             .opacity(animateHeader ? 1.0 : 0.7)
                         
-                        Text("Ready to level up your finance skills?")
+                        Text("The Duolingo for Finance Technicals")
                             .font(Brand.smallFont)
                             .foregroundColor(Brand.textSecondary)
                             .scaleEffect(animateHeader ? 1.0 : 0.9)
@@ -249,17 +251,13 @@ struct ProgressOverviewCard: View {
             }
             
             // Main card with enhanced glassmorphism
-            VStack(spacing: 20) {
+            VStack(spacing: 12) {
                 // Header with animated level badge
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Your Progress")
-                            .font(Brand.headlineFont)
+                        Text("Progress Tracker")
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Brand.textPrimary)
-                        
-                        Text("Keep the grind up!")
-                            .font(Brand.smallFont)
-                            .foregroundColor(Brand.textSecondary)
                     }
                     
                     Spacer()
@@ -270,10 +268,10 @@ struct ProgressOverviewCard: View {
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Brand.gamificationAccent.opacity(0.7),
+                                        Brand.primaryBlue.opacity(0.7),
                                         Brand.lightCoral.opacity(0.6),
-                                        Brand.primaryBlue.opacity(0.5),
-                                        Brand.softBlue.opacity(0.4)
+                                        Brand.softBlue.opacity(0.5),
+                                        Brand.accentBlue.opacity(0.4)
                                     ],
                                     startPoint: UnitPoint(x: (gradientShift.truncatingRemainder(dividingBy: 1.0)), y: 0),
                                     endPoint: UnitPoint(x: (gradientShift.truncatingRemainder(dividingBy: 1.0)) + 0.6, y: 1)
@@ -286,7 +284,7 @@ struct ProgressOverviewCard: View {
                                         LinearGradient(
                                             colors: [
                                                 Color.white.opacity(0.8),
-                                                Brand.gamificationAccent.opacity(0.4)
+                                                Brand.primaryBlue.opacity(0.4)
                                             ],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
@@ -294,7 +292,7 @@ struct ProgressOverviewCard: View {
                                         lineWidth: 1.5
                                     )
                             )
-                            .shadow(color: Brand.gamificationAccent.opacity(0.2), radius: glowAnimation ? 8 : 4, x: 0, y: 2)
+                            .shadow(color: Brand.primaryBlue.opacity(0.2), radius: glowAnimation ? 8 : 4, x: 0, y: 2)
                             .scaleEffect(glowAnimation ? 1.03 : 1.0)
                             .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: glowAnimation)
                             .animation(.linear(duration: 10.0).repeatForever(autoreverses: false), value: gradientShift)
@@ -307,7 +305,7 @@ struct ProgressOverviewCard: View {
                     }
                 }
                 
-                HStack(spacing: 24) {
+                HStack(spacing: 16) {
                     // Stunning 3D Progress Ring
                     ZStack {
                         // Outer glow ring
@@ -325,7 +323,7 @@ struct ProgressOverviewCard: View {
                                 ),
                                 lineWidth: 2
                             )
-                            .frame(width: 140, height: 140)
+                            .frame(width: 120, height: 120)
                             .blur(radius: 4)
                             .scaleEffect(localPulseAnimation ? 1.1 : 1.0)
                             .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: localPulseAnimation)
@@ -341,9 +339,9 @@ struct ProgressOverviewCard: View {
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
-                                lineWidth: 12
+                                lineWidth: 10
                             )
-                            .frame(width: 120, height: 120)
+                            .frame(width: 110, height: 110)
                         
                         // Progress ring with teal gradient
                         Circle()
@@ -360,9 +358,9 @@ struct ProgressOverviewCard: View {
                                     startAngle: .degrees(-90),
                                     endAngle: .degrees(270)
                                 ),
-                                style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                                style: StrokeStyle(lineWidth: 10, lineCap: .round)
                             )
-                            .frame(width: 120, height: 120)
+                            .frame(width: 110, height: 110)
                             .rotationEffect(.degrees(-90))
                             .shadow(color: progressColor.opacity(0.4), radius: 8, x: 0, y: 4)
                             .animation(.easeInOut(duration: 2.0), value: progressAnimation)
@@ -370,20 +368,19 @@ struct ProgressOverviewCard: View {
                         // Inner content with depth
                         VStack(spacing: 6) {
                             Text("\(Int(progressToNext * 100))%")
-                                .font(Brand.headlineFont)
-                                .fontWeight(.semibold)
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(Brand.textPrimary)
                                 .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 1)
                             
                             Text("to next level")
-                                .font(Brand.smallFont)
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(Brand.textSecondary)
                                 .multilineTextAlignment(.center)
                         }
                         .scaleEffect(localPulseAnimation ? 1.05 : 1.0)
                         .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: localPulseAnimation)
                     }
-                    .offset(x: 22)
+                    .offset(x: 15)
                     
                     Spacer()
                     
@@ -884,25 +881,49 @@ struct QuickActionsGrid: View {
     @Binding var navigateToLesson: Bool
     let cardIndex: Int
     @Binding var cardAnimations: [Bool]
+    @Binding var selection: Int
+    @State private var showDailyGoals = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 16)
-            ], spacing: 16) {
-                AdaptivePrimaryCTACard(
-                    store: store,
-                    pendingLesson: $pendingLesson,
-                    navigateToLesson: $navigateToLesson
-                )
-                
+        VStack(alignment: .leading, spacing: 12) {
+            // Start Learning - Full width button
+            AdaptivePrimaryCTACard(
+                store: store,
+                pendingLesson: $pendingLesson,
+                navigateToLesson: $navigateToLesson
+            )
+            
+            // Daily Goals and Achievements - Side by side
+            HStack(spacing: 12) {
                 QuickActionCard(
                     title: "Daily Goals",
                     subtitle: "Stay consistent",
                     icon: "target",
-                    gradient: Brand.secondaryGradient,
+                    gradient: LinearGradient(
+                        colors: [Brand.primaryBlue, Brand.lightCoral],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
                     action: {
-                        // TODO: Implement daily goal
+                        // Ensure daily goals are generated before showing the sheet
+                        if store.dailyGoals.isEmpty || store.lastDailyGoalResetDate == nil {
+                            store.checkAndResetDailyGoals()
+                        }
+                        showDailyGoals = true
+                    }
+                )
+                
+                QuickActionCard(
+                    title: "Achievements",
+                    subtitle: "View progress",
+                    icon: "trophy.fill",
+                    gradient: LinearGradient(
+                        colors: [Brand.lightCoral.opacity(0.8), Brand.primaryBlue.opacity(0.9)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    action: {
+                        selection = 2 // Navigate to achievements tab
                     }
                 )
             }
@@ -910,6 +931,9 @@ struct QuickActionsGrid: View {
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
         .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .sheet(isPresented: $showDailyGoals) {
+            DailyGoalsView(store: store)
+        }
     }
 }
 
@@ -923,7 +947,7 @@ struct AdaptivePrimaryCTACard: View {
     @State private var pulseAnimation = false
     
     private var isNewUser: Bool {
-        store.xp == 0 && store.streakDays == 0
+        !store.hasAttemptedQuestion
     }
     
     private var title: String {
@@ -1001,7 +1025,7 @@ struct AdaptivePrimaryCTACard: View {
                         .multilineTextAlignment(.center)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 120)
             .padding(.vertical, 20)
             .background(
                 ZStack {
@@ -1053,16 +1077,7 @@ struct QuickActionCard: View {
                 ZStack {
                     // Enhanced gradient background with subtle animation
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Brand.lightCoral,
-                                    Brand.primaryBlue
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .fill(gradient)
                         .saturation(1.2)
                         .brightness(0.06)
                         .frame(width: 50, height: 50)
@@ -1103,7 +1118,7 @@ struct QuickActionCard: View {
                         .multilineTextAlignment(.center)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 120)
             .padding(.vertical, 20)
             .background(
                 ZStack {
@@ -1890,27 +1905,15 @@ struct StunningEnhancedBackground: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Vibrant base gradient layer
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.95, green: 0.98, blue: 1.0),
-                        Color(red: 0.92, green: 0.96, blue: 0.99),
-                        Color(red: 0.88, green: 0.94, blue: 0.98)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea(.all)
-                
-                // Very subtle white with slight blue tint overlay
+                // Clean white background with very slight blue tint
                 LinearGradient(
                     colors: [
                         Color.white,
-                        Brand.lightBlue.opacity(0.02),
-                        Color.white.opacity(0.98)
+                        Color(red: 0.99, green: 0.995, blue: 1.0),
+                        Color(red: 0.98, green: 0.99, blue: 1.0)
                     ],
-                    startPoint: UnitPoint(x: gradientShift, y: 0),
-                    endPoint: UnitPoint(x: gradientShift + 0.5, y: 1)
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea(.all)
                 .animation(.easeInOut(duration: 15).repeatForever(autoreverses: false), value: gradientShift)
@@ -2153,6 +2156,7 @@ struct Triangle: Shape {
         navigateToLesson: .constant(false),
         animateProgress: .constant(false),
         pulseAnimation: .constant(false),
-        animateHeader: .constant(false)
+        animateHeader: .constant(false),
+        selection: .constant(0)
     )
 }
