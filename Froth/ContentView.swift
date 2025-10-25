@@ -2530,7 +2530,6 @@ struct ModernAchievementCard: View {
 struct ContentView: View {
     @EnvironmentObject var store: AppStore
     @State private var selection: Int = 0
-    @State private var showOnboarding = false
     @State private var isInitialized = false
 
     var body: some View {
@@ -2552,16 +2551,10 @@ struct ContentView: View {
                 }
                 .onAppear {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        if store.xp == 0 && store.completedLessonIDs.isEmpty {
-                            showOnboarding = true
-                        }
+                        // Skip onboarding check since authentication handles user flow now
                         isInitialized = true
                     }
                 }
-            } else if showOnboarding {
-                OnboardingView(onComplete: {
-                    showOnboarding = false
-                })
             } else {
                 TabView(selection: $selection) {
                     HomeView(selection: $selection)
@@ -2600,6 +2593,12 @@ struct ContentView: View {
             }
         }
     }
+}
+
+// MARK: - ContentView Preview
+#Preview {
+    ContentView()
+        .environmentObject(AppStore())
 }
 
 

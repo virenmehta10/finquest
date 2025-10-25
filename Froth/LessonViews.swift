@@ -6,8 +6,10 @@ import Charts
 
 struct ProfileView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject var authService: AuthService
     @State private var showEditProfile = false
     @State private var showSettings = false
+    @State private var showSignOutAlert = false
 
     var body: some View {
             NavigationStack {
@@ -128,7 +130,44 @@ struct ProfileView: View {
                                 }
                     .padding(.horizontal, 20)
                             }
-                            .padding(.bottom, 100)
+                    
+                    // Sign Out Section
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Account")
+                            .font(.title2.weight(.semibold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 20)
+                        
+                        VStack(spacing: 12) {
+                            Button(action: { showSignOutAlert = true }) {
+                                HStack {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.red)
+                                    
+                                    Text("Sign Out")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.red)
+                                    
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemBackground))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                                        )
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    .padding(.bottom, 100)
                         }
                     }
             .background(Color(.systemGroupedBackground))
@@ -142,6 +181,14 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+        }
+        .alert("Sign Out", isPresented: $showSignOutAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Sign Out", role: .destructive) {
+                authService.signOut()
+            }
+        } message: {
+            Text("Are you sure you want to sign out?")
         }
     }
 }
