@@ -7,10 +7,15 @@
 
 import SwiftUI
 import Combine
+import FirebaseCore
 
 @main
 struct FrothApp: App {
     @StateObject private var store = AppStore.load()
+    
+    init() {
+        FirebaseApp.configure()
+    }
 
     var body: some Scene {
         WindowGroup {
