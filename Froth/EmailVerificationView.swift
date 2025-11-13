@@ -20,7 +20,7 @@ struct EmailVerificationView: View {
     let userName: String
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    private let checkVerificationTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    private let checkVerificationTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect() // Check every 2 seconds instead of 5
     
     var body: some View {
         ZStack {
@@ -152,12 +152,42 @@ struct EmailVerificationView: View {
         }
         .onAppear {
             startResendCooldown()
+            // Check verification status immediately when view appears
+            Task { @MainActor in
+                await checkVerification()
+            }
         }
         .onReceive(timer) { _ in
             updateResendCooldown()
         }
         .onReceive(checkVerificationTimer) { _ in
             Task { @MainActor in
+                await checkVerification()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Check verification status when app becomes active (user returns from email)
+            Task { @MainActor in
+                // Check immediately
+                await checkVerification()
+                // Add a small delay and check again
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                await checkVerification()
+                // Check one more time after another second
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                await checkVerification()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("EmailVerificationLinkOpened"))) { _ in
+            // Check verification status when verification link is opened
+            Task { @MainActor in
+                // Check immediately
+                await checkVerification()
+                // Add a delay and check again
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                await checkVerification()
+                // Check again after another second to be sure
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                 await checkVerification()
             }
         }
@@ -200,20 +230,22 @@ struct EmailVerificationView: View {
     @MainActor
     private func checkVerification() async {
         // Check silently without showing loading overlay
+        print("🔍 [EmailVerificationView] Checking verification status...")
         await verificationService.checkVerificationStatus()
         
+        print("📧 [EmailVerificationView] Verification status: \(verificationService.isEmailVerified)")
+        
         if verificationService.isEmailVerified {
+            print("✅ [EmailVerificationView] Email verified! Navigating to home...")
             // Show success animation
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showVerifiedSuccess = true
             }
             
-            // Navigate after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                withAnimation {
-                    onVerified()
-                }
-            }
+            // Navigate immediately (no delay needed)
+            onVerified()
+        } else {
+            print("⏳ [EmailVerificationView] Email not yet verified. Will check again...")
         }
     }
 }

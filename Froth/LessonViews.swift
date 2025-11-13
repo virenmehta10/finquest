@@ -10,132 +10,127 @@ struct ProfileView: View {
     @State private var showSettings = false
 
     var body: some View {
-            NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 32) {
-                    Spacer()
-                        .frame(height: 20)
-                    // Professional Profile Header
-                    VStack(spacing: 16) {
-                        // Avatar with sophisticated styling
-                            ZStack {
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                        colors: [
-                                            Color(red: 0.2, green: 0.3, blue: 0.5),
-                                            Color(red: 0.1, green: 0.2, blue: 0.4)
-                                        ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                .frame(width: 60, height: 60)
-                                
-                                Text(String(store.username.prefix(1)).uppercased())
-                                .font(.system(size: 24, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                            
-                        // User info with clean typography
-                            VStack(spacing: 4) {
-                                Text(store.username)
-                                .font(.headline.weight(.semibold))
-                                    .foregroundColor(.primary)
-                                
-                                Text("Level \(store.level) • \(store.xp) XP")
-                                .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                        // Subtle edit button
-                            Button(action: { showEditProfile = true }) {
-                            HStack(spacing: 6) {
-                                    Image(systemName: "pencil")
-                                    .font(.system(size: 12, weight: .medium))
-                                    Text("Edit Profile")
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color(.systemGray6))
+        ScrollView {
+            LazyVStack(spacing: 32) {
+                Spacer()
+                    .frame(height: 20)
+                // Professional Profile Header
+                VStack(spacing: 16) {
+                    // Avatar with sophisticated styling
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.2, green: 0.3, blue: 0.5),
+                                        Color(red: 0.1, green: 0.2, blue: 0.4)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
-                    .background(
-                        Rectangle()
-                            .fill(Color(.systemBackground))
-                            .overlay(
-                                Rectangle()
-                                    .stroke(Color.black, lineWidth: 2)
                             )
-                    )
-                    .padding(.horizontal, 20)
-                    
-                    // Professional Stats Section
-                    VStack(alignment: .leading, spacing: 20) {
-                                Text("Your Stats")
-                            .font(.title2.weight(.semibold))
-                            .foregroundColor(.primary)
-                                    .padding(.horizontal, 20)
-                                
-                        LazyVGrid(columns: [
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16)
-                        ], spacing: 16) {
-                            ProfessionalStatItem(title: "Total XP", value: "\(store.xp)", icon: "star.fill")
-                            ProfessionalStatItem(title: "Level", value: "\(store.level)", icon: "arrow.up.circle.fill")
-                            ProfessionalStatItem(title: "Streak", value: "\(store.streakDays)", icon: "flame.fill")
-                            ProfessionalStatItem(title: "Perfect", value: "\(store.perfectLessons)", icon: "checkmark.seal.fill")
-                            ProfessionalStatItem(title: "Lessons", value: "\(store.completedLessonIDs.count)", icon: "book.fill")
-                            ProfessionalStatItem(title: "Study Time", value: "\(store.totalStudyTime)m", icon: "clock.fill")
-                                }
-                    .padding(.horizontal, 20)
-                            }
-                    
-                    // Clean Settings Section
-                    VStack(alignment: .leading, spacing: 20) {
-                                Text("Settings")
-                            .font(.title2.weight(.semibold))
-                            .foregroundColor(.primary)
-                                    .padding(.horizontal, 20)
+                            .frame(width: 60, height: 60)
                         
-                        VStack(spacing: 12) {
-                            ProfessionalSettingsRow(
-                            title: "Notifications",
-                                        icon: "bell.fill",
-                                isOn: $store.notificationsEnabled
-                                    )
-                                    
-                            ProfessionalSettingsRow(
-                                        title: "Sound Effects",
-                            icon: "speaker.wave.2.fill",
-                                isOn: $store.soundEnabled
-                                    )
-                                    
-                            ProfessionalSettingsRow(
-                                        title: "Haptic Feedback",
-                                        icon: "iphone.radiowaves.left.and.right",
-                                isOn: $store.hapticsEnabled
-                                    )
-                                }
-                    .padding(.horizontal, 20)
-                            }
-                            .padding(.bottom, 100)
-                        }
+                        Text(String(store.username.prefix(1)).uppercased())
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
                     }
-            .background(Color(.systemGroupedBackground))
-                    .navigationBarTitleDisplayMode(.inline)
+                    
+                    // User info with clean typography
+                    VStack(spacing: 4) {
+                        Text(store.username)
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.primary)
+                        
+                        Text("Level \(store.level) • \(store.xp) XP")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // Subtle edit button
+                    Button(action: { showEditProfile = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Edit Profile")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemGray6))
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .background(
+                    Rectangle()
+                        .fill(Color(.systemBackground))
+                        .overlay(
+                            Rectangle()
+                                .stroke(Color.black, lineWidth: 2)
+                        )
+                )
+                .padding(.horizontal, 20)
+                
+                // Professional Stats Section
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Your Stats")
+                        .font(.title2.weight(.semibold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 20)
+                    
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(), spacing: 16),
+                        GridItem(.flexible(), spacing: 16),
+                        GridItem(.flexible(), spacing: 16)
+                    ], spacing: 16) {
+                        ProfessionalStatItem(title: "Total XP", value: "\(store.xp)", icon: "star.fill")
+                        ProfessionalStatItem(title: "Level", value: "\(store.level)", icon: "arrow.up.circle.fill")
+                        ProfessionalStatItem(title: "Streak", value: "\(store.streakDays)", icon: "flame.fill")
+                        ProfessionalStatItem(title: "Perfect", value: "\(store.perfectLessons)", icon: "checkmark.seal.fill")
+                        ProfessionalStatItem(title: "Lessons", value: "\(store.completedLessonIDs.count)", icon: "book.fill")
+                        ProfessionalStatItem(title: "Study Time", value: "\(store.totalStudyTime)m", icon: "clock.fill")
+                    }
+                    .padding(.horizontal, 20)
+                }
+                
+                // Clean Settings Section
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Settings")
+                        .font(.title2.weight(.semibold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 20)
+                    
+                    VStack(spacing: 12) {
+                        ProfessionalSettingsRow(
+                            title: "Notifications",
+                            icon: "bell.fill",
+                            isOn: $store.notificationsEnabled
+                        )
+                        
+                        ProfessionalSettingsRow(
+                            title: "Sound Effects",
+                            icon: "speaker.wave.2.fill",
+                            isOn: $store.soundEnabled
+                        )
+                        
+                        ProfessionalSettingsRow(
+                            title: "Haptic Feedback",
+                            icon: "iphone.radiowaves.left.and.right",
+                            isOn: $store.hapticsEnabled
+                        )
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.bottom, 100)
+            }
         }
-        
-        // Add missing components
+        .background(Color(.systemGroupedBackground))
         .sheet(isPresented: $showEditProfile) {
             EditProfileView()
                 .environmentObject(store)
@@ -541,8 +536,9 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Preview (commented out to prevent interference with app)
 
+/*
 #Preview("ContentView") {
     let previewStore = AppStore()
     previewStore.isPreviewMode = true
@@ -558,6 +554,7 @@ struct SettingsView: View {
         .environmentObject(previewStore)
         .preferredColorScheme(.dark)
 }
+*/
 
 
 

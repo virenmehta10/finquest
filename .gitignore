@@ -2,3 +2,7 @@
 Froth.xcodeproj/xcuserdata/
 Froth.xcodeproj/project.xcworkspace/xcuserdata/
 Froth.xcodeproj/project.xcworkspace/xcuserdata/
+Froth/GoogleService-Info.plist
+Froth/GoogleService-Info (1).plist
+*.xcuserdatad
+Project/

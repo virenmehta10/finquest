@@ -17,86 +17,77 @@ struct HomeScrollContentNew: View {
     @State private var cardAnimations: [Bool] = Array(repeating: false, count: 6)
     
     var body: some View {
-        ZStack {
-            // Onboarding-style background gradient (matching welcome screen)
-            Brand.onboardingBackgroundGradient
-                .ignoresSafeArea(.all)
+        // Background is handled at app level - no need to duplicate here
+        // Removed ScrollView - parent HomeView already has one to prevent nested scrolling
+        LazyVStack(spacing: 4) {
+            // Hero Welcome Section
+            HeroWelcomeSection(
+                store: store,
+                animateHeader: animateHeader,
+                animateElements: animateElements
+            )
             
-            // Enhanced stunning background with multiple layers
-            StunningEnhancedBackground()
-                .ignoresSafeArea(.all)
+            // Progress Overview Card
+            ProgressOverviewCard(
+                store: store,
+                animateProgress: animateProgress,
+                pulseAnimation: pulseAnimation,
+                cardIndex: 0,
+                cardAnimations: $cardAnimations
+            )
+            .padding(.top, -10)
             
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                        // Hero Welcome Section
-                        HeroWelcomeSection(
-                            store: store,
-                            animateHeader: animateHeader,
-                            animateElements: animateElements
-                        )
-                        
-                        // Progress Overview Card
-                        ProgressOverviewCard(
-                            store: store,
-                            animateProgress: animateProgress,
-                            pulseAnimation: pulseAnimation,
-                            cardIndex: 0,
-                            cardAnimations: $cardAnimations
-                        )
-                        .padding(.top, -6)
-                        
-                        // Quick Actions Grid
-                        QuickActionsGrid(
-                            store: store,
-                            pendingLesson: $pendingLesson,
-                            navigateToLesson: $navigateToLesson,
-                            cardIndex: 1,
-                            cardAnimations: $cardAnimations,
-                            selection: $selection
-                        )
-                        .padding(.top, 12)
-                        
-                        // Bottom padding
-                        Spacer()
-                            .frame(height: 40)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, -35)
-            }
-            .scrollIndicators(.hidden)
+            // Quick Actions Grid
+            QuickActionsGrid(
+                store: store,
+                pendingLesson: $pendingLesson,
+                navigateToLesson: $navigateToLesson,
+                cardIndex: 1,
+                cardAnimations: $cardAnimations,
+                selection: $selection
+            )
+            .padding(.top, 4)
+            
+            // Minimal bottom padding to ensure everything fits
+            Spacer()
+                .frame(height: 10)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, -35)
+        .transaction { transaction in
+            transaction.animation = nil // Disable ALL animations in this view
         }
         .onAppear {
-            startAnimations()
+            // Set animations immediately without delays to prevent layout shifts
+            for i in 0..<cardAnimations.count {
+                cardAnimations[i] = true
+            }
+            animateElements = true
+            animateGradient = true
+            showParticles = true
+            // Don't call startAnimations() to avoid delayed animations causing bouncing
         }
     }
     
     private func startAnimations() {
-        // Staggered card animations
+        // Set animations immediately without spring animations to prevent bouncing
         for i in 0..<cardAnimations.count {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.15) {
-                withAnimation(.spring(response: 0.8, dampingFraction: 0.8)) {
-                    cardAnimations[i] = true
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.05) {
+                cardAnimations[i] = true
             }
         }
         
-        // Other animations
+        // Other animations - set immediately without animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            animateElements = true
+        }
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.easeOut(duration: 0.8)) {
-                animateElements = true
-            }
+            animateGradient = true
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeInOut(duration: 1.2)) {
-                animateGradient = true
-            }
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                showParticles = true
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            showParticles = true
         }
     }
 }
@@ -130,10 +121,10 @@ struct HeroWelcomeSection: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header content without background
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Welcome to Flow!")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Welcome to Alpha!")
                             .font(Brand.subheadlineFont)
                             .foregroundColor(Brand.textPrimary)
                             .scaleEffect(animateHeader ? 1.0 : 0.9)
@@ -237,24 +228,16 @@ struct ProgressOverviewCard: View {
                         )
                     )
                     .frame(width: CGFloat.random(in: 8...16))
-                    .offset(
-                        x: floatingParticles[index] ? CGFloat.random(in: -50...50) : CGFloat.random(in: -30...30),
-                        y: floatingParticles[index] ? CGFloat.random(in: -30...30) : CGFloat.random(in: -20...20)
-                    )
-                    .opacity(floatingParticles[index] ? 0.8 : 0.3)
-                    .animation(
-                        .easeInOut(duration: Double.random(in: 2...4))
-                        .repeatForever(autoreverses: true)
-                        .delay(Double(index) * 0.2),
-                        value: floatingParticles[index]
-                    )
+                    .offset(x: 0, y: 0) // Fixed position - no movement
+                    .opacity(0.1) // Fixed low opacity - no animation
+                    // All animations disabled to prevent bouncing
             }
             
             // Main card with enhanced glassmorphism
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 // Header with animated level badge
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("Progress Tracker")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Brand.textPrimary)
@@ -305,7 +288,7 @@ struct ProgressOverviewCard: View {
                     }
                 }
                 
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     // Stunning 3D Progress Ring
                     ZStack {
                         // Outer glow ring
@@ -492,7 +475,8 @@ struct ProgressOverviewCard: View {
         }
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
-        .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
+        .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.95)
         .onAppear {
             localAnimateProgress = true
             localPulseAnimation = true
@@ -885,7 +869,7 @@ struct QuickActionsGrid: View {
     @State private var showDailyGoals = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             // Start Learning - Full width button
             AdaptivePrimaryCTACard(
                 store: store,
@@ -894,7 +878,7 @@ struct QuickActionsGrid: View {
             )
             
             // Daily Goals and Achievements - Side by side
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
                 QuickActionCard(
                     title: "Daily Goals",
                     subtitle: "Stay consistent",
@@ -930,7 +914,8 @@ struct QuickActionsGrid: View {
         }
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
-        .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
+        .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.95)
         .sheet(isPresented: $showDailyGoals) {
             DailyGoalsView(store: store)
         }
@@ -969,7 +954,7 @@ struct AdaptivePrimaryCTACard: View {
                 DispatchQueue.main.async { navigateToLesson = true }
             }
         }) {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 ZStack {
                     // Enhanced gradient background with pulse animation
                     Circle()
@@ -985,7 +970,7 @@ struct AdaptivePrimaryCTACard: View {
                         )
                         .saturation(1.2)
                         .brightness(0.06)
-                        .frame(width: 50, height: 50)
+                        .frame(width: 45, height: 45)
                         .overlay(
                             Circle()
                                 .fill(
@@ -996,7 +981,7 @@ struct AdaptivePrimaryCTACard: View {
                                         ],
                                         center: .center,
                                         startRadius: 0,
-                                        endRadius: 25
+                                        endRadius: 22.5
                                     )
                                 )
                         )
@@ -1008,7 +993,7 @@ struct AdaptivePrimaryCTACard: View {
                         .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulseAnimation)
                     
                     Image(systemName: "play.circle.fill")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.white)
                         .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
@@ -1025,8 +1010,8 @@ struct AdaptivePrimaryCTACard: View {
                         .multilineTextAlignment(.center)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 120)
-            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, minHeight: 110)
+            .padding(.vertical, 18)
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 20)
@@ -1192,7 +1177,8 @@ struct LearningStatisticsSection: View {
         }
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
-        .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
+        .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.95)
     }
 }
 
@@ -1323,7 +1309,8 @@ struct AchievementsAndNewsSection: View {
         }
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
-        .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
+        .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.95)
     }
 }
 
@@ -1388,7 +1375,8 @@ struct DailyStreakCard: View {
         }
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
-        .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
+        .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.95)
         .onAppear {
             flameAnimation = true
         }
@@ -1457,7 +1445,8 @@ struct HomeContinueLearningCard: View {
         }
         .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.9)
         .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
-        .offset(y: cardAnimations[cardIndex] ? 0 : 30)
+        .opacity(cardAnimations[cardIndex] ? 1.0 : 0.0)
+        .scaleEffect(cardAnimations[cardIndex] ? 1.0 : 0.95)
         .onAppear {
             localPulseAnimation = true
         }

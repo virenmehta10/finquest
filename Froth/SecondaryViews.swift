@@ -3,6 +3,8 @@ import Combine
 import Charts
 import AudioToolbox
 import UIKit
+import FirebaseCore
+import FirebaseAuth
 
 // MARK: - Finance Road Quest
 
@@ -50,9 +52,21 @@ struct QuestView: View {
             GeometryReader { geometry in
                 ZStack {
                     // Enhanced animated background with multiple layers
-                ZStack {
-                    // App-themed red/blue gradient background - covers entire screen
-                    RedBlueSoftBackground()
+                    ZStack {
+                        // App-themed red/blue gradient background - covers entire screen
+                        RedBlueSoftBackground()
+                            .ignoresSafeArea(.all)
+                        
+                        // Subtle overlay for depth
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.05),
+                                Color.clear,
+                                Color.black.opacity(0.02)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                         .ignoresSafeArea(.all)
                     }
                     
@@ -67,7 +81,7 @@ struct QuestView: View {
                             
                             VStack(spacing: 24) {
                                 // Four levels for the selected module
-                                VStack(spacing: 50) {
+                                VStack(spacing: 60) { // Increased spacing for better visual separation
                                     let moduleLessons = store.getCurrentModuleLessons()
                                     ForEach(moduleLessons.indices, id: \.self) { index in
                                         let lesson = moduleLessons[index]
@@ -93,8 +107,14 @@ struct QuestView: View {
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         Text(store.currentModule)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Brand.primaryBlue, Brand.lightCoral],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                             .multilineTextAlignment(.center)
                             .offset(y: 8) // Move down slightly
                             .transition(.asymmetric(
@@ -102,6 +122,7 @@ struct QuestView: View {
                                 removal: .scale(scale: 0.8).combined(with: .opacity)
                             ))
                             .animation(.spring(response: 0.5, dampingFraction: 0.8), value: store.currentModule)
+                            .shadow(color: Brand.primaryBlue.opacity(0.2), radius: 2, x: 0, y: 1)
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Menu {
@@ -127,9 +148,21 @@ struct QuestView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "list.bullet.rectangle")
-                                .foregroundColor(.primary)
-                                .font(.system(size: 18, weight: .medium))
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Brand.primaryBlue.opacity(0.1), Brand.lightCoral.opacity(0.1)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 36, height: 36)
+                                
+                                Image(systemName: "list.bullet.rectangle")
+                                    .foregroundColor(Brand.primaryBlue)
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
                         }
                     }
                 }
@@ -193,34 +226,81 @@ struct EnhancedQuestRoadView: View {
     
     var body: some View {
         ZStack {
-            // Subtle road border for definition
+            // Outer shadow/glow for depth
             QuestCurvyRoad()
                 .stroke(
-                    Color.black.opacity(0.08),
-                    style: StrokeStyle(lineWidth: 32, lineCap: .round)
+                    Color.black.opacity(0.12),
+                    style: StrokeStyle(lineWidth: 36, lineCap: .round, lineJoin: .round)
                 )
+                .blur(radius: 2)
             
-            // Main road surface with elegant gradient
+            // Road border/shoulder with subtle gradient
             QuestCurvyRoad()
                 .stroke(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.96, green: 0.94, blue: 0.90), // Light warm beige
-                            Color(red: 0.94, green: 0.91, blue: 0.87), // Slightly darker
-                            Color(red: 0.92, green: 0.89, blue: 0.84)  // Darker for depth
+                            Color(red: 0.85, green: 0.83, blue: 0.78),
+                            Color(red: 0.82, green: 0.80, blue: 0.75)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    style: StrokeStyle(lineWidth: 28, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 34, lineCap: .round, lineJoin: .round)
                 )
-                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
-                .shadow(color: Brand.gamificationAccent.opacity(0.05), radius: 8, x: 0, y: 3)
             
-            // Removed progress overlay (sludge animation) - road stays clean
+            // Main road surface with rich, realistic gradient
+            QuestCurvyRoad()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.95, green: 0.93, blue: 0.88), // Light warm asphalt
+                            Color(red: 0.92, green: 0.90, blue: 0.85), // Medium tone
+                            Color(red: 0.90, green: 0.88, blue: 0.82),  // Darker for depth
+                            Color(red: 0.88, green: 0.86, blue: 0.80)  // Deepest tone
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 30, lineCap: .round, lineJoin: .round)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                .shadow(color: Brand.primaryBlue.opacity(0.08), radius: 12, x: 0, y: 6)
             
-            // Removed glow effect for completed sections - keeping road clean
+            // Center line divider for road realism
+            QuestCurvyRoad()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.6),
+                            Color.white.opacity(0.4),
+                            Color.white.opacity(0.6)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    style: StrokeStyle(
+                        lineWidth: 2,
+                        lineCap: .round,
+                        lineJoin: .round,
+                        dash: [8, 12]
+                    )
+                )
+                .offset(x: 0, y: 0)
             
+            // Subtle inner highlight for 3D effect
+            QuestCurvyRoad()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.15),
+                            Color.clear,
+                            Color.white.opacity(0.1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)
+                )
         }
         .onAppear {
             sparkleAnimation = true
@@ -421,8 +501,8 @@ struct QuestLevelNodeView: View {
         HStack { content }
             .frame(maxWidth: .infinity, alignment: .center)
             .offset(x: xOffset)
-            .scaleEffect(isUnlocked && !isLocked ? 1.0 : 0.95)
-            .opacity(isUnlocked && !isLocked ? 1.0 : (isProLocked ? 0.6 : 0.7))
+            .scaleEffect(isUnlocked && !isLocked ? 1.0 : 0.92)
+            .opacity(isUnlocked && !isLocked ? 1.0 : (isProLocked ? 0.65 : 0.75))
             .animation(.easeInOut(duration: 0.3), value: isUnlocked)
             .onAppear {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(Double(index) * 0.15)) {
@@ -431,32 +511,96 @@ struct QuestLevelNodeView: View {
             }
             .scaleEffect(hasAppeared ? 1.0 : 0.8)
             .opacity(hasAppeared ? 1.0 : 0.0)
+            .padding(.vertical, 4) // Add vertical padding for better spacing
     }
     
     @ViewBuilder
     private var content: some View {
         VStack(spacing: 8) {
             ZStack {
+                // Enhanced glow effect for unlocked nodes
+                if isUnlocked && !isLocked {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Brand.primaryBlue.opacity(0.2),
+                                    Brand.primaryBlue.opacity(0.05),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: 20,
+                                endRadius: 40
+                            )
+                        )
+                        .frame(width: 80, height: 80)
+                        .blur(radius: 8)
+                }
+                
+                // All levels use Circle shape - consistent for all levels including the first
                 Circle()
-                    .fill(isUnlocked && !isLocked ? Color.white : (isProLocked ? Color.white.opacity(0.6) : Color.white.opacity(0.75)))
-                    .frame(width: 52, height: 52)
+                    .fill(
+                        LinearGradient(
+                            colors: isUnlocked && !isLocked ? [
+                                Color.white,
+                                Color(red: 0.98, green: 0.98, blue: 1.0)
+                            ] : (isProLocked ? [
+                                Color.white.opacity(0.6),
+                                Color.white.opacity(0.5)
+                            ] : [
+                                Color.white.opacity(0.75),
+                                Color.white.opacity(0.65)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 56, height: 56)
                     .overlay(
                         Circle()
-                            .stroke(isProLocked ? Color.orange.opacity(0.6) : Color.black.opacity(0.25), lineWidth: isProLocked ? 2.0 : 1.5)
+                            .stroke(
+                                isProLocked ? 
+                                    LinearGradient(
+                                        colors: [Color.orange, Color.yellow],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ) :
+                                    LinearGradient(
+                                        colors: [
+                                            Color.black.opacity(0.15),
+                                            Color.black.opacity(0.25)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                lineWidth: isProLocked ? 2.5 : 2.0
+                            )
                     )
-                    .shadow(color: isProLocked ? Color.orange.opacity(0.2) : .black.opacity(0.08), radius: isProLocked ? 12 : 8, x: 0, y: 4)
+                    .shadow(
+                        color: isProLocked ? Color.orange.opacity(0.3) : (isUnlocked && !isLocked ? Brand.primaryBlue.opacity(0.2) : .black.opacity(0.1)),
+                        radius: isProLocked ? 14 : (isUnlocked && !isLocked ? 12 : 10),
+                        x: 0,
+                        y: isProLocked ? 6 : 5
+                    )
+                    .shadow(
+                        color: isUnlocked && !isLocked ? Brand.primaryBlue.opacity(0.1) : .clear,
+                        radius: 20,
+                        x: 0,
+                        y: 8
+                    )
                 if store.completedLessonIDs.contains(lesson.id) {
                     // Completed lesson - green checkmark
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.green)
                 } else if isUnlocked && !isLocked {
-                    // Unlocked but not completed - blue flag
+                    // Unlocked but not completed - blue flag (always in circle, no square styling)
                     NavigationLink(destination: LessonPlayView(lesson: lesson)) {
                         Image(systemName: "flag.fill")
                             .font(.system(size: 24, weight: .bold))
                             .foregroundColor(.blue)
                     }
+                    .buttonStyle(PlainButtonStyle())
                 } else if isLocked {
                     // Pro locked lesson - premium lock with crown
                     Button(action: {
@@ -481,34 +625,39 @@ struct QuestLevelNodeView: View {
                 }
             }
             
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Text(lesson.title.components(separatedBy: " - ").last ?? lesson.title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(isUnlocked && !isLocked ? .primary : (isProLocked ? .secondary : .secondary))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 150)
+                    .frame(maxWidth: 160)
+                    .shadow(color: isUnlocked && !isLocked ? Color.white.opacity(0.3) : .clear, radius: 2, x: 0, y: 1)
                 
                 if isProLocked {
                     Text("PRO")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
                         .background(
                             Capsule()
-                                .fill(LinearGradient(
-                                    colors: [Color.orange, Color.yellow],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ))
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.orange, Color.yellow, Color.orange],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .shadow(color: Color.orange.opacity(0.4), radius: 4, x: 0, y: 2)
                         )
                 }
             }
             
             Text("\(lesson.questions.count) Questions")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.8))
+                .padding(.top, 2)
         }
     }
 }
@@ -2231,18 +2380,22 @@ struct QuickStartCard: View {
 struct RegistrationView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: AppStore
+    @StateObject private var verificationService = EmailVerificationService()
     @State private var firstName: String = ""
     @State private var email: String = ""
     @State private var phoneNumber: String = ""
+    @State private var password: String = ""
     @State private var isLoading = false
     @State private var animateFields = false
     @State private var showSuccessAnimation = false
     @State private var animateBackground = false
+    @State private var showEmailVerification = false
+    @State private var showSignIn = false
     
     let onComplete: () -> Void
     
     private var formProgress: Double {
-        let completedFields = [firstName.count >= 2, email.contains("@") && email.hasSuffix(".edu"), phoneNumber.filter { $0.isNumber }.count >= 10].filter { $0 }.count
+        let completedFields = [firstName.count >= 2, email.contains("@") && !email.hasSuffix(".edu"), phoneNumber.filter { $0.isNumber }.count >= 10].filter { $0 }.count
         return Double(completedFields) / 3.0
     }
     
@@ -2346,11 +2499,33 @@ struct RegistrationView: View {
                             .opacity(animateFields ? 1.0 : 0.0)
                             .offset(x: animateFields ? 0 : -30)
                             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.0), value: animateFields)
+                            .onChange(of: email) { _, _ in
+                                // Clear error when user starts typing
+                                if verificationService.errorMessage != nil {
+                                    verificationService.errorMessage = nil
+                                }
+                            }
                         
                         EnhancedPhoneNumberField(phoneNumber: $phoneNumber)
                             .opacity(animateFields ? 1.0 : 0.0)
                             .offset(x: animateFields ? 0 : -30)
                             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.2), value: animateFields)
+                        
+                        // Error message display for registration
+                        if let errorMessage = verificationService.errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.red)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.red.opacity(0.1))
+                                )
+                                .opacity(animateFields ? 1.0 : 0.0)
+                                .offset(x: animateFields ? 0 : -30)
+                                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.4), value: animateFields)
+                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 30)
@@ -2359,82 +2534,63 @@ struct RegistrationView: View {
                     
                     // Enhanced continue button
                 VStack(spacing: 16) {
+                    // Create Account - Text with arrow (black text, functions like button)
                     Button(action: {
                         handleContinue()
                     }) {
-                            HStack(spacing: 12) {
+                        HStack(spacing: 8) {
                             if isLoading {
                                 ProgressView()
-                                        .scaleEffect(0.9)
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else if showSuccessAnimation {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(.white)
+                                    .scaleEffect(0.9)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                            } else if showSuccessAnimation {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.black)
                             } else {
                                 Text("Create Account")
-                                        .font(.system(size: 18, weight: .semibold))
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.black)
                                 
                                 Image(systemName: "arrow.right")
-                                        .font(.system(size: 16, weight: .semibold))
-                                }
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.black)
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-            .background(
-                                ZStack {
-                                    // Base gradient
-                LinearGradient(
-                                        colors: isFormValid ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.3), Color.gray.opacity(0.2)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                                    
-                                    // Shimmer effect when valid
-                                    if isFormValid && !isLoading {
-                                        LinearGradient(
-                                            colors: [Color.white.opacity(0.3), Color.clear, Color.white.opacity(0.3)],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                        .offset(x: showSuccessAnimation ? 300 : -300)
-                                        .animation(.linear(duration: 1.5).repeatForever(autoreverses: false), value: showSuccessAnimation)
-                                    }
-                                }
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .shadow(
-                                color: isFormValid ? Brand.primaryBlue.opacity(0.3) : Color.clear,
-                                radius: isFormValid ? 12 : 0,
-                                x: 0,
-                                y: 6
-                            )
-                        }
-                        .disabled(!isFormValid || isLoading)
-                        .scaleEffect(isFormValid ? 1.0 : 0.95)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isFormValid)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isLoading)
-                        
-                        // Simplified terms
-                        HStack(spacing: 8) {
-                            Button("Terms of Service") {
-                                // Handle terms
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Brand.primaryBlue)
-                            
-                            Text("•")
-                                .font(.system(size: 14))
-                                .foregroundColor(Brand.textSecondary)
-                            
-                            Button("Privacy Policy") {
-                                // Handle privacy
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Brand.primaryBlue)
                         }
                     }
+                    .disabled(!isFormValid || isLoading)
+                    .opacity(isFormValid ? 1.0 : 0.5)
+                    
+                    // Sign in option
+                    Button(action: {
+                        showSignIn = true
+                    }) {
+                        Text("Sign in")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Brand.primaryBlue)
+                    }
+                    .padding(.top, 4)
+                    
+                    // Simplified terms
+                    HStack(spacing: 8) {
+                        Button("Terms of Service") {
+                            // Handle terms
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Brand.primaryBlue)
+                        
+                        Text("•")
+                            .font(.system(size: 14))
+                            .foregroundColor(Brand.textSecondary)
+                        
+                        Button("Privacy Policy") {
+                            // Handle privacy
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Brand.primaryBlue)
+                    }
+                    .padding(.top, 8)
+                }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 30)
                     .opacity(animateFields ? 1.0 : 0.0)
@@ -2451,33 +2607,282 @@ struct RegistrationView: View {
             // Start background animation immediately and keep it running
             animateBackground = true
         }
+        .sheet(isPresented: $showEmailVerification) {
+            EmailVerificationView(
+                verificationService: verificationService,
+                onVerified: {
+                    showEmailVerification = false
+                    onComplete()
+                },
+                userEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                userName: firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            .environmentObject(store)
+        }
+        .sheet(isPresented: $showSignIn) {
+            SignInView(
+                verificationService: verificationService,
+                onSignInSuccess: {
+                    showSignIn = false
+                    // Clear any error messages when sign-in succeeds
+                    verificationService.errorMessage = nil
+                    onComplete()
+                }
+            )
+            .environmentObject(store)
+            .onAppear {
+                // Clear error messages when sign-in sheet appears
+                verificationService.errorMessage = nil
+            }
+        }
     }
     
     private var isFormValid: Bool {
         let phoneDigits = phoneNumber.filter { $0.isNumber }
         return !firstName.isEmpty && firstName.count >= 2 && 
-               !email.isEmpty && email.contains("@") && email.hasSuffix(".edu") &&
+               !email.isEmpty && email.contains("@") && !email.hasSuffix(".edu") &&
                !phoneNumber.isEmpty && phoneDigits.count >= 10
     }
     
     private func handleContinue() {
         isLoading = true
         
-        // Success animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            showSuccessAnimation = true
+        Task {
+            do {
+                // Generate a secure password if not provided
+                let userPassword = password.isEmpty ? generateSecurePassword() : password
+                
+                // Save registration data to store first
+                store.username = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+                store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                // Create Firebase account and send verification email
+                let userId = try await verificationService.createAccount(
+                    email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                    password: userPassword,
+                    username: firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+                
+                isLoading = false
+                
+                // Show email verification screen
+                showEmailVerification = true
+            } catch {
+                isLoading = false
+                // Error is handled by verificationService.errorMessage
+                // DO NOT continue if email already exists - force user to sign in
+                if let nsError = error as NSError? {
+                    if nsError.code == AuthErrorCode.emailAlreadyInUse.rawValue {
+                        // Email already exists - DO NOT proceed, show error and force sign-in
+                        print("❌ Account creation blocked - email already exists")
+                        return // Stop here, don't call onComplete()
+                    }
+                }
+                // For other errors, also don't proceed
+                print("❌ Account creation failed: \(error.localizedDescription)")
+            }
         }
+    }
+    
+    private func generateSecurePassword() -> String {
+        // Generate a secure random password
+        let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+        return String((0..<16).map { _ in characters.randomElement()! })
+    }
+}
+
+// MARK: - Sign In View
+
+struct SignInView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var store: AppStore
+    @ObservedObject var verificationService: EmailVerificationService
+    @State private var email: String = ""
+    @State private var phoneNumber: String = ""
+    @State private var isLoading = false
+    @FocusState private var focusedField: Field?
+    
+    enum Field {
+        case email, phoneNumber
+    }
+    
+    let onSignInSuccess: () -> Void
+    
+    private var isFormValid: Bool {
+        let phoneDigits = phoneNumber.filter { $0.isNumber }
+        return !email.isEmpty && email.contains("@") && !phoneNumber.isEmpty && phoneDigits.count >= 10
+    }
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Brand.backgroundGradient
+                    .ignoresSafeArea(.all)
+                
+                ScrollView {
+                    VStack(spacing: 32) {
+                        // Header
+                        VStack(spacing: 16) {
+                            Image(systemName: "person.circle.fill")
+                                .font(.system(size: 60, weight: .medium))
+                                .foregroundColor(Brand.primaryBlue)
+                            
+                            Text("Sign In")
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundColor(Brand.textPrimary)
+                            
+                            Text("Welcome back! Sign in to continue your learning journey.")
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(Brand.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+                        .padding(.top, 40)
+                        
+                        // Form fields
+                        VStack(spacing: 20) {
+                            // Email field
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Email")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                TextField("Enter your email", text: $email)
+                                    .focused($focusedField, equals: .email)
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled(true)
+                                    .font(.system(size: 18, weight: .medium))
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 18)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .fill(Color.white.opacity(0.8))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 16)
+                                                    .stroke(focusedField == .email ? Brand.primaryBlue : Color.gray.opacity(0.2), lineWidth: focusedField == .email ? 2 : 1)
+                                            )
+                                    )
+                                    .onChange(of: email) { _, _ in
+                                        // Clear error when user starts typing
+                                        if verificationService.errorMessage != nil {
+                                            verificationService.errorMessage = nil
+                                        }
+                                    }
+                            }
+                            
+                            // Phone number field
+                            EnhancedPhoneNumberField(phoneNumber: $phoneNumber)
+                            
+                            // Error message
+                            if let errorMessage = verificationService.errorMessage {
+                                Text(errorMessage)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.red)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.red.opacity(0.1))
+                                    )
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        
+                        // Sign in button
+                        Button(action: {
+                            handleSignIn()
+                        }) {
+                            HStack(spacing: 8) {
+                                if isLoading {
+                                    ProgressView()
+                                        .scaleEffect(0.9)
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Text("Sign In")
+                                        .font(.system(size: 18, weight: .semibold))
+                                    
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                LinearGradient(
+                                    colors: isFormValid && !isLoading ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.3), Color.gray.opacity(0.2)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .shadow(
+                                color: isFormValid && !isLoading ? Brand.primaryBlue.opacity(0.3) : Color.clear,
+                                radius: isFormValid && !isLoading ? 12 : 0,
+                                x: 0,
+                                y: 6
+                            )
+                        }
+                        .disabled(!isFormValid || isLoading)
+                        .padding(.horizontal, 24)
+                        
+                        Spacer(minLength: 20)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        // Clear error messages when canceling
+                        verificationService.errorMessage = nil
+                        dismiss()
+                    }
+                    .foregroundColor(Brand.primaryBlue)
+                }
+            }
+            .onAppear {
+                // Clear error messages when sign-in view appears
+                verificationService.errorMessage = nil
+            }
+        }
+    }
+    
+    private func handleSignIn() {
+        // Clear any previous error messages before attempting sign-in
+        verificationService.errorMessage = nil
+        isLoading = true
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // Save registration data to store
-            store.username = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
-            store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
-            store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            isLoading = false
-            
-            // Call completion handler to dismiss onboarding and go to homepage
-            onComplete()
+        Task {
+            do {
+                try await verificationService.signIn(
+                    email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                    phoneNumber: phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+                
+                // Check if user is actually signed in (not just link sent)
+                if let user = Auth.auth().currentUser {
+                    // User is signed in - update store and complete sign-in
+                    store.email = user.email ?? email.trimmingCharacters(in: .whitespacesAndNewlines)
+                    store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+                    store.username = user.displayName ?? store.username
+                    
+                    isLoading = false
+                    // Clear any error messages on successful sign-in
+                    verificationService.errorMessage = nil
+                    onSignInSuccess()
+                } else {
+                    // Link was sent but user not signed in yet
+                    // Keep the message visible but don't complete sign-in
+                    isLoading = false
+                    // Error message is already set by verificationService
+                }
+            } catch {
+                isLoading = false
+                // Error is handled by verificationService.errorMessage
+            }
         }
     }
 }
@@ -2565,7 +2970,7 @@ struct EnhancedEmailField: View {
     @State private var animateIcon = false
     
     private var isValid: Bool {
-        email.contains("@") && email.hasSuffix(".edu") && !email.isEmpty
+        email.contains("@") && !email.hasSuffix(".edu") && !email.isEmpty
     }
     
     var body: some View {
@@ -2604,7 +3009,7 @@ struct EnhancedEmailField: View {
                         y: isFocused ? 4 : 2
                     )
                 
-                TextField("Enter your .edu email", text: $email)
+                TextField("Enter your email", text: $email)
                     .focused($isFocused)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -2629,7 +3034,7 @@ struct EnhancedEmailField: View {
                     .font(.system(size: 14))
                     .foregroundColor(isValid ? Brand.emerald : Color.gray.opacity(0.4))
                 
-                Text(isValid ? "Valid .edu email!" : "Must be a .edu email address")
+                Text(isValid ? "Valid email!" : "Must be a personal email (not .edu)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(isValid ? Brand.emerald : Brand.textSecondary)
             }
@@ -2841,7 +3246,7 @@ struct EmailField: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
-            TextField("Enter your .edu email", text: $email)
+            TextField("Enter your email", text: $email)
                 .focused($isFocused)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
@@ -2854,7 +3259,7 @@ struct EmailField: View {
                         .fill(Color.white)
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .stroke(isFocused ? Color.blue.opacity(0.8) : (email.contains("@") && email.hasSuffix(".edu") && !email.isEmpty ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (email.contains("@") && email.hasSuffix(".edu") && !email.isEmpty ? 2 : 1))
+                                .stroke(isFocused ? Color.blue.opacity(0.8) : (email.contains("@") && !email.hasSuffix(".edu") && !email.isEmpty ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (email.contains("@") && !email.hasSuffix(".edu") && !email.isEmpty ? 2 : 1))
                         )
                         .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
                 )
@@ -2864,7 +3269,7 @@ struct EmailField: View {
                     .font(.caption)
                     .foregroundColor(.blue)
                 
-                Text("Must be a .edu email address")
+                Text("Must be a personal email (not .edu)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -2944,7 +3349,6 @@ struct SecondaryButtonStyle: ButtonStyle {
 }
 
 struct OnboardingView: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: AppStore
     @State private var currentPage = 0
     @State private var showRegistration = false
@@ -3003,16 +3407,16 @@ struct OnboardingView: View {
                         Text("Skip")
                             .foregroundColor(.secondary)
                             .onTapGesture {
-                                dismiss()
+                                onComplete()
                             }
                         
                         Spacer()
                         
                         HStack(spacing: 6) {
                             Text("Next")
-                                .foregroundColor(Brand.textPrimary)
+                                .foregroundColor(Color(white: 0.1))
                             Image(systemName: "arrow.right")
-                                .foregroundColor(Brand.textPrimary)
+                                .foregroundColor(Color(white: 0.1))
                         }
                         .onTapGesture {
                             withAnimation(.easeInOut(duration: 0.3)) {
@@ -3048,6 +3452,7 @@ struct OnboardingView: View {
         )
         
         }
+        .colorScheme(.light)
         .sheet(isPresented: $showRegistration) {
             RegistrationView(onComplete: {
                 onComplete() // Call the OnboardingView's completion handler
@@ -3090,6 +3495,7 @@ struct OnboardingPage: View {
                 VStack(spacing: 16) {
                     Text(title)
                         .font(.largeTitle.weight(.bold))
+                        .foregroundColor(Color(white: 0.1))
                         .multilineTextAlignment(.center)
                     
                     Text(subtitle)
@@ -3099,7 +3505,7 @@ struct OnboardingPage: View {
                     
                     Text(description)
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color(white: 0.4))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
                 }
@@ -3154,7 +3560,7 @@ struct AchievementsView: View {
                             GridItem(.flexible()),
                             GridItem(.flexible()),
                             GridItem(.flexible())
-                        ], spacing: 16) {
+                        ], spacing: 12) {
                             ForEach(quickWins) { achievement in
                                 AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
                             }
@@ -3180,7 +3586,7 @@ struct AchievementsView: View {
                             GridItem(.flexible()),
                             GridItem(.flexible()),
                             GridItem(.flexible())
-                        ], spacing: 16) {
+                        ], spacing: 12) {
                             ForEach(mediumTerm) { achievement in
                                 AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
                             }
@@ -3206,7 +3612,7 @@ struct AchievementsView: View {
                             GridItem(.flexible()),
                             GridItem(.flexible()),
                             GridItem(.flexible())
-                        ], spacing: 16) {
+                        ], spacing: 12) {
                             ForEach(longTerm) { achievement in
                                 AchievementCard(achievement: achievement, isUnlocked: store.achievements.contains(achievement.id))
                             }
@@ -3261,14 +3667,14 @@ struct AchievementCard: View {
                 }
             }
         }
-        .frame(width: 100, height: 120)
-        .padding(10)
+        .frame(width: 95, height: 115)
+        .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.systemBackground))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.black.opacity(0.2), lineWidth: 1)
                 )
         )
     }
