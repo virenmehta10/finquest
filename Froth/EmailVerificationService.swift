@@ -22,7 +22,18 @@ class EmailVerificationService: ObservableObject {
     init() {
         // Only setup auth listener if Firebase is configured
         if FirebaseApp.app() != nil {
+            // Ensure Firebase Auth persists sessions (this is the default, but being explicit)
+            // Firebase Auth automatically persists sessions by default on iOS
             setupAuthStateListener()
+            
+            // Check if there's already a signed-in user when service initializes
+            if let user = Auth.auth().currentUser {
+                print("✅ User already signed in on service init: \(user.uid)")
+                // Check verification status for existing user
+                Task {
+                    await checkVerificationStatus()
+                }
+            }
         }
     }
     
@@ -72,16 +83,9 @@ class EmailVerificationService: ObservableObject {
         defer { isLoading = false }
         
         do {
-            // Check if email already exists BEFORE trying to create account
-            // Note: This is a pre-check, but Firebase's createUser will be the authoritative check
-            let accountExists = await emailExists(email)
-            if accountExists {
-                // Pre-check says email exists, but we'll still try to create and let Firebase confirm
-                print("⚠️ Pre-check indicates email \(email) might exist, but proceeding to let Firebase confirm")
-            }
-            
             // Create Firebase user account
             // Firebase will throw emailAlreadyInUse if the email actually exists
+            // We removed the deprecated fetchSignInMethods pre-check and rely on Firebase's error handling
             print("🔵 Creating Firebase account for: \(email)")
             let result = try await Auth.auth().createUser(withEmail: email, password: password)
             
@@ -100,8 +104,11 @@ class EmailVerificationService: ObservableObject {
             
             // Configure ActionCodeSettings with iOS bundle ID (required for iOS)
             let actionCodeSettings = ActionCodeSettings()
+            // Use a URL that will redirect to the app
             actionCodeSettings.url = URL(string: "https://alpha-1bd67.firebaseapp.com")
-            actionCodeSettings.handleCodeInApp = false  // Open in browser - it will process verification, then we check status when app becomes active
+            // Set to false - let it open in browser first, then redirect to app
+            // This is more reliable and avoids "operation not valid" errors
+            actionCodeSettings.handleCodeInApp = false
             actionCodeSettings.setIOSBundleID(Bundle.main.bundleIdentifier!)
             
             // Send verification email - ONLY call once (calling twice causes rate-limiting)
@@ -155,8 +162,11 @@ class EmailVerificationService: ObservableObject {
             
             // Configure ActionCodeSettings with iOS bundle ID (required for iOS)
             let actionCodeSettings = ActionCodeSettings()
+            // Use a URL that will redirect to the app
             actionCodeSettings.url = URL(string: "https://alpha-1bd67.firebaseapp.com")
-            actionCodeSettings.handleCodeInApp = false  // Open in browser - it will process verification, then we check status when app becomes active
+            // Set to false - let it open in browser first, then redirect to app
+            // This is more reliable and avoids "operation not valid" errors
+            actionCodeSettings.handleCodeInApp = false
             actionCodeSettings.setIOSBundleID(Bundle.main.bundleIdentifier!)
             
             // Send verification email - ONLY call once (calling twice causes rate-limiting)
@@ -186,49 +196,42 @@ class EmailVerificationService: ObservableObject {
         defer { isLoading = false }
         
         do {
-            // Check if email exists (account already exists)
-            let accountExists = await emailExists(email)
+            // Try to sign in - if account doesn't exist, we'll create it
+            // We removed the deprecated fetchSignInMethods check and rely on Firebase's error handling
+            // First, check if user is already signed in with this email
+            if let currentUser = Auth.auth().currentUser, currentUser.email?.lowercased() == email.lowercased() {
+                // User is already signed in with this email - no verification needed
+                isEmailVerified = currentUser.isEmailVerified
+                print("✅ User already signed in: \(currentUser.uid)")
+                return
+            }
             
-            if accountExists {
-                // For existing accounts, check if user is already signed in (persistent session)
-                if let currentUser = Auth.auth().currentUser, currentUser.email?.lowercased() == email.lowercased() {
-                    // User is already signed in with this email - no verification needed
-                    isEmailVerified = currentUser.isEmailVerified
-                    print("✅ User already signed in: \(currentUser.uid)")
-                    return
-                }
-                
-                // For existing accounts without active session:
-                // Since passwords don't exist, we need to use passwordless email link authentication
-                // However, Firebase requires the user to click the link to complete sign-in
-                // This is a limitation without a backend service that can issue custom tokens
-                
-                // Try to send passwordless sign-in link
+            // Try to send passwordless sign-in link for existing accounts
+            // If this succeeds, the account exists. If it fails with userNotFound, we'll create a new account
+            // Since we don't have passwords, we use passwordless email link authentication
             let actionCodeSettings = ActionCodeSettings()
             actionCodeSettings.url = URL(string: "https://alpha-1bd67.firebaseapp.com")
             actionCodeSettings.handleCodeInApp = true
             actionCodeSettings.setIOSBundleID(Bundle.main.bundleIdentifier!)
             
-                do {
-            try await Auth.auth().sendSignInLink(toEmail: email, actionCodeSettings: actionCodeSettings)
-                    print("✅ Passwordless sign-in link sent to existing account: \(email)")
-                    
-                    // Successfully sent link - inform user to check email
-                    // Don't throw error, just set message and return
-                    self.errorMessage = "Sign-in link sent to your email. Please check your inbox (and spam folder) to complete sign-in."
-                    
-                    // Note: The user will need to click the link in their email to complete sign-in
-                    // This is a Firebase requirement for passwordless authentication
-                    // For true no-verification sign-in, implement a backend service that:
-                    // 1. Validates email + phone number
-                    // 2. Uses Firebase Admin SDK to generate custom tokens
-                    // 3. Signs the user in with the custom token
-                    
-                    return // Return successfully after sending link
-                } catch let linkError {
-                    // If sending link fails, provide helpful error message
-                    print("❌ Error sending sign-in link: \(linkError.localizedDescription)")
-                    if let linkNsError = linkError as NSError? {
+            do {
+                // Try to send sign-in link - if this succeeds, the account exists
+                try await Auth.auth().sendSignInLink(toEmail: email, actionCodeSettings: actionCodeSettings)
+                print("✅ Passwordless sign-in link sent to existing account: \(email)")
+                
+                // Successfully sent link - inform user to check email
+                self.errorMessage = "Sign-in link sent to your email. Please check your inbox (and spam folder) to complete sign-in."
+                return // Return successfully after sending link
+            } catch let linkError {
+                // Check if the error is because the account doesn't exist
+                if let linkNsError = linkError as NSError? {
+                    let errorCode = AuthErrorCode(_bridgedNSError: linkNsError)
+                    if errorCode == .userNotFound {
+                        // Account doesn't exist - create new account below
+                        print("ℹ️ Account doesn't exist, will create new account")
+                    } else {
+                        // Other error (too many requests, invalid email, etc.)
+                        print("❌ Error sending sign-in link: \(linkError.localizedDescription)")
                         if linkNsError.code == AuthErrorCode.tooManyRequests.rawValue {
                             self.errorMessage = "Too many sign-in attempts. Please wait a moment and try again."
                         } else if linkNsError.code == AuthErrorCode.invalidEmail.rawValue {
@@ -236,31 +239,33 @@ class EmailVerificationService: ObservableObject {
                         } else {
                             self.errorMessage = "Unable to send sign-in link. Please try again or contact support."
                         }
-                    } else {
-                        self.errorMessage = "Unable to complete sign-in. Please try again."
+                        throw linkError
                     }
+                } else {
+                    // Unknown error - throw it
                     throw linkError
                 }
-            } else {
-                // Account doesn't exist - create new account
-                // Generate a secure random password for Firebase (not shown to user, used internally)
-                let tempPassword = generateSecurePassword()
-                
-                // Create account
-                let result = try await Auth.auth().createUser(withEmail: email, password: tempPassword)
-                print("✅ New account created: \(result.user.uid)")
-                
-                // Sign in the newly created user immediately (no verification needed for new accounts)
-                try await Auth.auth().signIn(withEmail: email, password: tempPassword)
-                
-                // Update user profile if needed
-                let changeRequest = result.user.createProfileChangeRequest()
-                // You could store phone number in custom claims or user metadata if needed
-                try await changeRequest.commitChanges()
-                
-                isEmailVerified = result.user.isEmailVerified
-                print("✅ New account created and signed in: \(result.user.uid)")
             }
+            
+            // If we get here, the account doesn't exist, so create it
+            // Account doesn't exist - create new account
+            // Generate a secure random password for Firebase (not shown to user, used internally)
+            let tempPassword = generateSecurePassword()
+            
+            // Create account
+            let result = try await Auth.auth().createUser(withEmail: email, password: tempPassword)
+            print("✅ New account created: \(result.user.uid)")
+            
+            // Sign in the newly created user immediately (no verification needed for new accounts)
+            try await Auth.auth().signIn(withEmail: email, password: tempPassword)
+            
+            // Update user profile if needed
+            let changeRequest = result.user.createProfileChangeRequest()
+            // You could store phone number in custom claims or user metadata if needed
+            try await changeRequest.commitChanges()
+            
+            isEmailVerified = result.user.isEmailVerified
+            print("✅ New account created and signed in: \(result.user.uid)")
         } catch {
             // Handle errors specifically for sign-in (not account creation)
             // Don't show "email already in use" errors during sign-in
@@ -314,48 +319,9 @@ class EmailVerificationService: ObservableObject {
         return String((0..<16).map { _ in characters.randomElement()! })
     }
 
-    // Check if an email has any sign-in method (i.e., is registered)
-    func emailExists(_ email: String) async -> Bool {
-        guard FirebaseApp.app() != nil else {
-            print("⚠️ Firebase not configured - cannot check if email exists")
-            return false
-        }
-        
-        do {
-            print("🔍 Checking if email exists: \(email)")
-            let methods = try await Auth.auth().fetchSignInMethods(forEmail: email)
-            let exists = !methods.isEmpty
-            if exists {
-                print("✅ Email \(email) exists with methods: \(methods)")
-            } else {
-                print("❌ Email \(email) does NOT exist in Firebase (no sign-in methods found)")
-            }
-            return exists
-        } catch {
-            // If fetchSignInMethods throws an error, it usually means the email doesn't exist
-            // Firebase throws specific errors for non-existent emails
-            if let nsError = error as NSError? {
-                let errorCode = AuthErrorCode(_bridgedNSError: nsError)
-                // userNotFound means email doesn't exist - this is expected
-                if errorCode == .userNotFound {
-                    print("❌ Email \(email) does NOT exist in Firebase (userNotFound error)")
-                    return false
-                }
-                // invalidEmail means the email format is wrong
-                if errorCode == .invalidEmail {
-                    print("⚠️ Invalid email format: \(email)")
-                    return false
-                }
-                // For other errors, log them but assume email doesn't exist to be safe
-                print("⚠️ Error checking if email exists: \(error.localizedDescription) (code: \(nsError.code))")
-            } else {
-                print("⚠️ Unknown error checking if email exists: \(error.localizedDescription)")
-            }
-            // Return false on error to allow account creation to proceed
-            // Firebase will catch it if the email actually exists
-            return false
-        }
-    }
+    // Note: Removed emailExists() function because fetchSignInMethods is deprecated
+    // We now rely on Firebase's createUser and signIn methods to handle existing accounts
+    // Firebase will throw emailAlreadyInUse error if we try to create an account that exists
     
     func handleVerificationLink(url: URL) async {
         guard FirebaseApp.app() != nil else {
@@ -363,32 +329,60 @@ class EmailVerificationService: ObservableObject {
             return
         }
         
-        print("🔗 Handling verification link: \(url.absoluteString)")
+        print("🔗 [EmailVerificationService] Verification link clicked: \(url.absoluteString)")
         
-        // Check if this is a sign-in link first
+        // Check if this is a sign-in link (passwordless)
         if Auth.auth().isSignIn(withEmailLink: url.absoluteString) {
             print("✅ This is a sign-in link (passwordless), not a verification link")
-            // Don't process sign-in links here
+            // Wait a moment for Firebase to process, then check status
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            await checkVerificationStatus()
             return
         }
         
-        // When the verification link is clicked, it may:
-        // 1. Open in browser first, which processes it, then redirects to app
-        // 2. Open directly in app (if handleCodeInApp = true)
-        // In either case, the verification may have already been processed.
-        // We should NOT try to apply the action code again, as it will fail with "operation not valid"
-        // Instead, just check if the email is already verified.
+        // For email verification links, Firebase may process them automatically
+        // We don't need to manually apply the code - just check if verification succeeded
+        print("🔗 [EmailVerificationService] Email verification link detected")
         
-        print("🔗 Verification link opened. Checking verification status (not applying code)...")
+        // Check if there's a current user
+        guard let user = Auth.auth().currentUser else {
+            print("⚠️ No user signed in. User may need to sign in first.")
+            return
+        }
         
-        // Wait a moment for Firebase to process if it was just clicked
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        // Wait a moment for Firebase to process the verification (if it processes automatically)
+        try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
         
-        // Just check verification status - don't try to apply the code
-        await checkVerificationStatus()
+        // Check verification status - Firebase may have already processed it
+        do {
+            print("🔄 [EmailVerificationService] Checking verification status...")
+            try await user.reload()
+            let wasVerified = isEmailVerified
+            isEmailVerified = user.isEmailVerified
+            
+            if isEmailVerified {
+                print("✅ [EmailVerificationService] Email is verified!")
+                // Post notification so EmailVerificationView can detect it
+                if !wasVerified {
+                    print("📢 [EmailVerificationService] Email just verified! Posting notification...")
+                    NotificationCenter.default.post(name: NSNotification.Name("EmailVerificationLinkOpened"), object: nil)
+                }
+            } else {
+                print("⏳ [EmailVerificationService] Email not yet verified. Will check again...")
+                // Check again after another moment
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                try await user.reload()
+                isEmailVerified = user.isEmailVerified
+                if isEmailVerified {
+                    print("✅ [EmailVerificationService] Email verified on second check!")
+                    NotificationCenter.default.post(name: NSNotification.Name("EmailVerificationLinkOpened"), object: nil)
+                }
+            }
+        } catch {
+            print("❌ [EmailVerificationService] Error checking verification status: \(error.localizedDescription)")
+        }
         
-        // Check again after another moment to be sure
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        // Final check
         await checkVerificationStatus()
     }
     
@@ -398,31 +392,74 @@ class EmailVerificationService: ObservableObject {
             return
         }
         
-        guard let user = Auth.auth().currentUser else {
+        // First, check if there's a current user
+        if let user = Auth.auth().currentUser {
+            // User is signed in - check their verification status
+            do {
+                print("🔄 [EmailVerificationService] Checking verification status for user: \(user.uid)")
+                try await user.reload()
+                let wasVerified = isEmailVerified
+                isEmailVerified = user.isEmailVerified
+                
+                if user.isEmailVerified {
+                    if !wasVerified {
+                        print("✅ [EmailVerificationService] Email verification status changed: User is now verified!")
+                        // Post notification immediately when verification is detected
+                        print("📢 [EmailVerificationService] Posting notification for verified email...")
+                        NotificationCenter.default.post(name: NSNotification.Name("EmailVerificationLinkOpened"), object: nil)
+                    } else {
+                        print("✅ [EmailVerificationService] User email is verified")
+                    }
+                } else {
+                    print("⏳ [EmailVerificationService] User email is not yet verified")
+                }
+            } catch {
+                print("❌ [EmailVerificationService] Error reloading user: \(error.localizedDescription)")
+                // Still check the current status even if reload fails
+                let currentStatus = user.isEmailVerified
+                if currentStatus != isEmailVerified {
+                    isEmailVerified = currentStatus
+                    if isEmailVerified {
+                        print("✅ [EmailVerificationService] Email is verified (from cached status)")
+                        NotificationCenter.default.post(name: NSNotification.Name("EmailVerificationLinkOpened"), object: nil)
+                    }
+                }
+            }
+        } else {
+            // No user signed in - try to check if we can find a user by email
+            // This handles the case where the user verified their email but isn't signed in
+            print("⚠️ [EmailVerificationService] No current user found when checking verification status")
+            print("💡 [EmailVerificationService] This might mean the user verified their email but isn't signed in")
+            print("💡 [EmailVerificationService] The user may need to sign in to complete the process")
             isEmailVerified = false
-            print("⚠️ No current user found when checking verification status")
-            return
+        }
+    }
+    
+    // New function to check verification status for a specific email
+    // This is useful when the user isn't signed in but we know their email
+    func checkVerificationStatusForEmail(_ email: String) async -> Bool {
+        guard FirebaseApp.app() != nil else {
+            return false
         }
         
-        // Reload user to get latest email verification status from Firebase
-        do {
-            print("🔄 Checking verification status for user: \(user.uid)")
-            try await user.reload()
-            let wasVerified = isEmailVerified
-            isEmailVerified = user.isEmailVerified
-            
-            if user.isEmailVerified && !wasVerified {
-                print("✅ Email verification status changed: User is now verified!")
-            } else if user.isEmailVerified {
-                print("✅ User email is verified")
-            } else {
-                print("⏳ User email is not yet verified")
+        // If there's already a signed-in user with this email, check their status
+        if let currentUser = Auth.auth().currentUser, 
+           currentUser.email?.lowercased() == email.lowercased() {
+            do {
+                try await currentUser.reload()
+                let verified = currentUser.isEmailVerified
+                isEmailVerified = verified
+                return verified
+            } catch {
+                print("❌ Error reloading user: \(error.localizedDescription)")
+                return currentUser.isEmailVerified
             }
-        } catch {
-            print("❌ Error reloading user: \(error.localizedDescription)")
-            // Still check the current status even if reload fails
-            isEmailVerified = user.isEmailVerified
         }
+        
+        // If no user is signed in, we can't check verification status directly
+        // The user needs to sign in first
+        print("⚠️ Cannot check verification status: No user signed in with email \(email)")
+        return false
     }
     
     func signOut() throws {
@@ -461,4 +498,5 @@ class EmailVerificationService: ObservableObject {
         return error.localizedDescription
     }
 }
+
 
