@@ -6,8 +6,10 @@ import Charts
 
 struct ProfileView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject var authManager: AuthManager
     @State private var showEditProfile = false
     @State private var showSettings = false
+    @State private var showSignOutConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -89,7 +91,7 @@ struct ProfileView: View {
                         GridItem(.flexible(), spacing: 16),
                         GridItem(.flexible(), spacing: 16)
                     ], spacing: 16) {
-                        ProfessionalStatItem(title: "Total XP", value: "\(store.xp)", icon: "star.fill")
+                        ProfessionalStatItem(title: "EOY Bonus", value: formatEOYBonus(store.totalPoints), icon: "banknote.fill")
                         ProfessionalStatItem(title: "Level", value: "\(store.level)", icon: "arrow.up.circle.fill")
                         ProfessionalStatItem(title: "Streak", value: "\(store.streakDays)", icon: "flame.fill")
                         ProfessionalStatItem(title: "Perfect", value: "\(store.perfectLessons)", icon: "checkmark.seal.fill")
@@ -127,6 +129,33 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+                
+                // Sign Out Section
+                VStack(spacing: 12) {
+                    Button(action: {
+                        showSignOutConfirmation = true
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.right.square")
+                                .font(.system(size: 18, weight: .medium))
+                            Text("Sign Out")
+                                .font(.body.weight(.semibold))
+                        }
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemBackground))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.horizontal, 20)
                 .padding(.bottom, 100)
             }
         }
@@ -137,6 +166,27 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+        }
+        .alert("Sign Out", isPresented: $showSignOutConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Sign Out", role: .destructive) {
+                signOut()
+            }
+        } message: {
+            Text("Are you sure you want to sign out? You'll need to sign in again to access your account.")
+        }
+    }
+    
+    private func signOut() {
+        authManager.signOut()
+        // The ContentView will automatically detect the sign out and show onboarding
+    }
+    
+    private func formatEOYBonus(_ points: Double) -> String {
+        if points.truncatingRemainder(dividingBy: 1) == 0 {
+            return "$\(Int(points))K"
+        } else {
+            return String(format: "$%.1fK", points)
         }
     }
 }
@@ -149,6 +199,8 @@ struct ProfessionalStatItem: View {
     
     private var iconColor: Color {
         switch icon {
+        case "banknote.fill":
+            return Color(red: 0.2, green: 0.6, blue: 0.3) // Money green
         case "star.fill":
             return Color(red: 0.8, green: 0.7, blue: 0.2) // Dull yellow
         case "arrow.up.circle.fill":

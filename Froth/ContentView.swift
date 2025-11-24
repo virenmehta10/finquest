@@ -242,19 +242,19 @@ struct DailyGoal: Identifiable, Codable {
         
         var xpReward: Int {
             switch self {
-            case .simple: return 15
-            case .moderate: return 30
-            case .advanced: return 50
+            case .simple: return 5
+            case .moderate: return 15
+            case .advanced: return 30
             }
         }
     }
     
-    init(title: String, description: String, type: DailyGoalType, icon: String, targetValue: Int) {
+    init(title: String, description: String, type: DailyGoalType, icon: String, targetValue: Int, xpReward: Int? = nil) {
         self.id = UUID()
         self.title = title
         self.description = description
         self.type = type
-        self.xpReward = type.xpReward
+        self.xpReward = xpReward ?? type.xpReward
         self.icon = icon
         self.targetValue = targetValue
         self.currentProgress = 0
@@ -304,8 +304,8 @@ final class AppStore: ObservableObject {
     @Published var currentStreak: Int = 0
     @Published var longestStreak: Int = 0
     @Published var currentQuestionStreak: Int = 0
-    @Published var totalPoints: Int = 0
-    @Published var pointsEarnedThisSession: Int = 0
+    @Published var totalPoints: Double = 0
+    @Published var pointsEarnedThisSession: Double = 0
     @Published var showStreakCelebration: Bool = false
     @Published var streakMilestoneHit: Int? = nil
     @Published var selectedTheme: AppTheme = .alpha
@@ -314,6 +314,48 @@ final class AppStore: ObservableObject {
     @Published var hapticsEnabled: Bool = true
     @Published var currentModule: String = "Accounting Basics"
     @Published var completedModules: Set<String> = []
+    
+    // Module-specific progress tracking
+    struct ModuleProgress: Codable {
+        var xp: Int = 0
+        var totalPoints: Double = 0
+        var level: Int = 1
+        var perfectLessons: Int = 0
+        var completedLessonIDs: Set<UUID> = []
+        
+        enum CodingKeys: String, CodingKey {
+            case xp, totalPoints, level, perfectLessons, completedLessonIDs
+        }
+        
+        init(xp: Int = 0, totalPoints: Double = 0, level: Int = 1, perfectLessons: Int = 0, completedLessonIDs: Set<UUID> = []) {
+            self.xp = xp
+            self.totalPoints = totalPoints
+            self.level = level
+            self.perfectLessons = perfectLessons
+            self.completedLessonIDs = completedLessonIDs
+        }
+        
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            xp = try container.decode(Int.self, forKey: .xp)
+            totalPoints = try container.decode(Double.self, forKey: .totalPoints)
+            level = try container.decode(Int.self, forKey: .level)
+            perfectLessons = try container.decode(Int.self, forKey: .perfectLessons)
+            let ids = try container.decode([String].self, forKey: .completedLessonIDs)
+            completedLessonIDs = Set(ids.compactMap { UUID(uuidString: $0) })
+        }
+        
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(xp, forKey: .xp)
+            try container.encode(totalPoints, forKey: .totalPoints)
+            try container.encode(level, forKey: .level)
+            try container.encode(perfectLessons, forKey: .perfectLessons)
+            try container.encode(Array(completedLessonIDs).map { $0.uuidString }, forKey: .completedLessonIDs)
+        }
+    }
+    
+    @Published var moduleProgress: [String: ModuleProgress] = [:]
     @Published var lastLessonID: UUID? = nil
     @Published var shouldShowUnlockAnimation: Bool = false
     @Published var isProUser: Bool = false
@@ -363,7 +405,7 @@ final class AppStore: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func configureFromLoadedData(xp: Int, streakDays: Int, lastPracticeDate: Date?, completedLessonIDs: Set<UUID>, username: String, level: Int, achievements: Set<UUID>, weeklyGoal: Int, currentWeekXP: Int, studyStreak: Int, lastStudyDate: Date?, dailyGoal: Int, currentDayXP: Int, totalStudyTime: Int, perfectLessons: Int, currentStreak: Int, longestStreak: Int, selectedTheme: AppTheme, notificationsEnabled: Bool, soundEnabled: Bool, hapticsEnabled: Bool, isProUser: Bool, proSubscriptionExpiryDate: Date?, hasAttemptedQuestion: Bool, dailyGoals: [DailyGoal]? = nil, lastDailyGoalResetDate: Date? = nil, totalDailyGoalsCompleted: Int? = nil, todayDailyGoalsXP: Int? = nil) {
+    func configureFromLoadedData(xp: Int, streakDays: Int, lastPracticeDate: Date?, completedLessonIDs: Set<UUID>, username: String, level: Int, achievements: Set<UUID>, weeklyGoal: Int, currentWeekXP: Int, studyStreak: Int, lastStudyDate: Date?, dailyGoal: Int, currentDayXP: Int, totalStudyTime: Int, perfectLessons: Int, currentStreak: Int, longestStreak: Int, selectedTheme: AppTheme, notificationsEnabled: Bool, soundEnabled: Bool, hapticsEnabled: Bool, isProUser: Bool, proSubscriptionExpiryDate: Date?, hasAttemptedQuestion: Bool, dailyGoals: [DailyGoal]? = nil, lastDailyGoalResetDate: Date? = nil, totalDailyGoalsCompleted: Int? = nil, todayDailyGoalsXP: Int? = nil, totalPoints: Double = 0, moduleProgress: [String: ModuleProgress] = [:], currentModule: String = "Accounting Basics") {
         self.xp = xp
         self.streakDays = streakDays
         self.lastPracticeDate = lastPracticeDate
@@ -392,6 +434,9 @@ final class AppStore: ObservableObject {
         self.lastDailyGoalResetDate = lastDailyGoalResetDate
         self.totalDailyGoalsCompleted = totalDailyGoalsCompleted ?? 0
         self.todayDailyGoalsXP = todayDailyGoalsXP ?? 0
+        self.totalPoints = totalPoints
+        self.moduleProgress = moduleProgress
+        self.currentModule = currentModule
     }
 
     func awardXP(_ amount: Int) {
@@ -408,24 +453,14 @@ final class AppStore: ObservableObject {
     
     func handleCorrectAnswer() {
         currentQuestionStreak += 1
-        let basePoints = 10
-        // Exponential growth with soft caps at known milestones
-        let exponentialFactor = min(5.0, pow(1.25, Double(max(0, currentQuestionStreak - 1))))
-        let milestoneBoost: Double
-        switch currentQuestionStreak {
-        case 5: milestoneBoost = 1.5
-        case 10: milestoneBoost = 2.0
-        case 20: milestoneBoost = 2.5
-        case 50: milestoneBoost = 3.0
-        default: milestoneBoost = 1.0
-        }
-        let pointsEarned = Int(Double(basePoints) * exponentialFactor * milestoneBoost)
+        // Each correct answer gives exactly 1 point
+        let pointsEarned: Double = 1.0
         
-        totalPoints += pointsEarned
+        // Accumulate points in session - will be added to module-specific totalPoints at lesson end
         pointsEarnedThisSession += pointsEarned
         
         // Award XP in tandem with points (1:1 for now)
-        awardXP(pointsEarned)
+        awardXP(Int(pointsEarned))
         
         // Update daily goals progress
         updateDailyGoalProgress(action: .questionCorrect)
@@ -534,6 +569,27 @@ final class AppStore: ObservableObject {
     
     func getCurrentModuleLessons() -> [Lesson] {
         return ContentProvider.sampleLessons.filter { $0.category == currentModule }
+    }
+    
+    // MARK: - Module Progress Helpers
+    
+    func getCurrentModuleProgress() -> ModuleProgress {
+        // Return existing progress or default - don't modify state during view updates
+        return moduleProgress[currentModule] ?? ModuleProgress()
+    }
+    
+    func updateCurrentModuleProgress(_ update: (inout ModuleProgress) -> Void) {
+        // Initialize if doesn't exist, then update
+        if moduleProgress[currentModule] == nil {
+            moduleProgress[currentModule] = ModuleProgress()
+        }
+        var progress = moduleProgress[currentModule]!
+        update(&progress)
+        moduleProgress[currentModule] = progress
+    }
+    
+    func getAllModules() -> [String] {
+        return Array(Set(ContentProvider.sampleLessons.map { $0.category })).sorted()
     }
     
     // MARK: - Pro Access Control
@@ -707,6 +763,12 @@ final class AppStore: ObservableObject {
         // Award XP
         awardXP(goal.xpReward)
         todayDailyGoalsXP += goal.xpReward
+        
+        // Add reward to current module's EOY Bonus immediately when goal is completed
+        updateCurrentModuleProgress { progress in
+            progress.totalPoints += Double(goal.xpReward)
+        }
+        
         totalDailyGoalsCompleted += 1
         
         // Haptic feedback
@@ -721,6 +783,10 @@ final class AppStore: ObservableObject {
             let bonusXP = 25
             awardXP(bonusXP)
             todayDailyGoalsXP += bonusXP
+            // Also add bonus to current module's EOY Bonus
+            updateCurrentModuleProgress { progress in
+                progress.totalPoints += Double(bonusXP)
+            }
         }
     }
     
@@ -852,7 +918,10 @@ final class AppStore: ObservableObject {
                 dailyGoals: dailyGoals,
                 lastDailyGoalResetDate: lastDailyGoalResetDate,
                 totalDailyGoalsCompleted: totalDailyGoalsCompleted,
-                todayDailyGoalsXP: todayDailyGoalsXP
+                todayDailyGoalsXP: todayDailyGoalsXP,
+                totalPoints: totalPoints,
+                moduleProgress: moduleProgress,
+                currentModule: currentModule
             )
             let data = try JSONEncoder().encode(payload)
             UserDefaults.standard.set(data, forKey: AppStore.storageKey)
@@ -899,7 +968,10 @@ final class AppStore: ObservableObject {
                     dailyGoals: payload.dailyGoals,
                     lastDailyGoalResetDate: payload.lastDailyGoalResetDate,
                     totalDailyGoalsCompleted: payload.totalDailyGoalsCompleted,
-                    todayDailyGoalsXP: payload.todayDailyGoalsXP
+                    todayDailyGoalsXP: payload.todayDailyGoalsXP,
+                    totalPoints: payload.totalPoints ?? 0,
+                    moduleProgress: payload.moduleProgress ?? [:],
+                    currentModule: payload.currentModule ?? "Accounting Basics"
                 )
             } catch {
                 print("Load decode failed", error)
@@ -977,8 +1049,11 @@ final class AppStore: ObservableObject {
         let lastDailyGoalResetDate: Date?
         let totalDailyGoalsCompleted: Int?
         let todayDailyGoalsXP: Int?
+        let totalPoints: Double?
+        let moduleProgress: [String: AppStore.ModuleProgress]?
+        let currentModule: String?
         
-        init(xp: Int, streak: Int, lastPractice: Date?, completedIDs: [String], username: String, level: Int, achievements: [String]? = nil, weeklyGoal: Int? = nil, currentWeekXP: Int? = nil, studyStreak: Int? = nil, lastStudyDate: Date? = nil, dailyGoal: Int? = nil, currentDayXP: Int? = nil, totalStudyTime: Int? = nil, perfectLessons: Int? = nil, currentStreak: Int? = nil, longestStreak: Int? = nil, selectedTheme: String? = nil, notificationsEnabled: Bool? = nil, soundEnabled: Bool? = nil, hapticsEnabled: Bool? = nil, isProUser: Bool? = nil, proSubscriptionExpiryDate: Date? = nil, hasAttemptedQuestion: Bool? = nil, dailyGoals: [DailyGoal]? = nil, lastDailyGoalResetDate: Date? = nil, totalDailyGoalsCompleted: Int? = nil, todayDailyGoalsXP: Int? = nil) {
+        init(xp: Int, streak: Int, lastPractice: Date?, completedIDs: [String], username: String, level: Int, achievements: [String]? = nil, weeklyGoal: Int? = nil, currentWeekXP: Int? = nil, studyStreak: Int? = nil, lastStudyDate: Date? = nil, dailyGoal: Int? = nil, currentDayXP: Int? = nil, totalStudyTime: Int? = nil, perfectLessons: Int? = nil, currentStreak: Int? = nil, longestStreak: Int? = nil, selectedTheme: String? = nil, notificationsEnabled: Bool? = nil, soundEnabled: Bool? = nil, hapticsEnabled: Bool? = nil, isProUser: Bool? = nil, proSubscriptionExpiryDate: Date? = nil, hasAttemptedQuestion: Bool? = nil, dailyGoals: [DailyGoal]? = nil, lastDailyGoalResetDate: Date? = nil, totalDailyGoalsCompleted: Int? = nil, todayDailyGoalsXP: Int? = nil, totalPoints: Double? = nil, moduleProgress: [String: AppStore.ModuleProgress]? = nil, currentModule: String? = nil) {
             self.xp = xp
             self.streak = streak
             self.lastPractice = lastPractice
@@ -1007,6 +1082,9 @@ final class AppStore: ObservableObject {
             self.lastDailyGoalResetDate = lastDailyGoalResetDate
             self.totalDailyGoalsCompleted = totalDailyGoalsCompleted
             self.todayDailyGoalsXP = todayDailyGoalsXP
+            self.totalPoints = totalPoints
+            self.moduleProgress = moduleProgress
+            self.currentModule = currentModule
         }
     }
 }
@@ -5254,8 +5332,31 @@ struct ModernAchievementCard: View {
 struct ContentView: View {
     @EnvironmentObject var store: AppStore
     @State private var selection: Int = 0
+    @StateObject private var authManager = AuthManager()
     @State private var showOnboarding = false
     @State private var isInitialized = false
+    @State private var showEmailVerification = false
+    
+    private func checkAuthStatus() {
+        if let user = authManager.currentUser {
+            // User is signed in, check if email is verified
+            authManager.refreshUser { isVerified in
+                DispatchQueue.main.async {
+                    if isVerified {
+                        showOnboarding = false
+                        showEmailVerification = false
+                    } else {
+                        showEmailVerification = true
+                        showOnboarding = false
+                    }
+                }
+            }
+        } else {
+            // No user signed in, show onboarding
+            showOnboarding = true
+            showEmailVerification = false
+        }
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -5276,18 +5377,29 @@ struct ContentView: View {
                 }
                 .onAppear {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        // Show onboarding if user hasn't completed registration (no email/phone) 
-                        // or if they have no progress (new user)
-                        if (store.email.isEmpty && store.phoneNumber.isEmpty) || 
-                           (store.xp == 0 && store.completedLessonIDs.isEmpty) {
-                            showOnboarding = true
-                        }
+                        checkAuthStatus()
                         isInitialized = true
                     }
                 }
-            } else if showOnboarding {
-                OnboardingView(onComplete: {
-                    showOnboarding = false
+            } else if showEmailVerification {
+                // Show email verification if user is signed in but not verified
+                EmailVerificationView(
+                    authManager: authManager,
+                    email: authManager.currentUser?.email ?? "",
+                    onComplete: {
+                        showEmailVerification = false
+                    }
+                )
+                .colorScheme(.light)
+            } else if showOnboarding || authManager.currentUser == nil {
+                // Show onboarding/registration if not authenticated
+                OnboardingView(authManager: authManager, onComplete: {
+                    // After registration, check if email is verified
+                    if authManager.currentUser != nil && !authManager.isEmailVerified {
+                        showEmailVerification = true
+                    } else {
+                        showOnboarding = false
+                    }
                 })
                 .colorScheme(.light)
             } else {
@@ -5317,6 +5429,7 @@ struct ContentView: View {
                         .tag(3)
                     
                     ProfileView()
+                        .environmentObject(authManager)
                         .tabItem {
                             Label("Profile", systemImage: selection == 4 ? "person.crop.circle.fill" : "person.crop.circle")
                         }
@@ -5325,6 +5438,22 @@ struct ContentView: View {
                 .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                 .accentColor(Brand.primaryBlue)
                 .preferredColorScheme(.light)
+            }
+        }
+        .onChange(of: authManager.isEmailVerified) { _, isVerified in
+            if isVerified {
+                showEmailVerification = false
+                showOnboarding = false
+            }
+        }
+        .onChange(of: authManager.currentUser) { _, user in
+            // If user signs out, show onboarding/registration
+            // Add small delay to avoid conflicts with dismissing sheets
+            if user == nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showOnboarding = true
+                    showEmailVerification = false
+                }
             }
         }
     }
@@ -5861,7 +5990,7 @@ private struct HomeScrollContent: View {
             // Professional stats section with elegant cards
             VStack(spacing: 20) {
                 HStack(spacing: 16) {
-                    // Total XP Card
+                    // EOY bonus card
                     VStack(spacing: 12) {
                         ZStack {
                             Circle()
@@ -5877,17 +6006,17 @@ private struct HomeScrollContent: View {
                                 )
                                 .frame(width: 50, height: 50)
                             
-                            Image(systemName: "star.fill")
+                            Image(systemName: "banknote.fill")
                                 .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(Color(red: 0.2, green: 0.6, blue: 1.0))
+                                .foregroundColor(Color(red: 0.2, green: 0.6, blue: 0.3))
                         }
                         
                         VStack(spacing: 4) {
-                            Text("\(store.xp)")
+                            Text("$\(store.xp)")
                                 .font(Brand.largeTitleFont)
                                 .foregroundColor(Brand.textPrimary)
                             
-                            Text("TOTAL XP")
+                            Text("EOY BONUS")
                                 .font(Brand.smallFont)
                                 .foregroundColor(Brand.textSecondary)
                                 .tracking(0.5)
@@ -6126,4 +6255,6 @@ private struct FloatingElementsView: View {
         }
     }
 }
+
+
 

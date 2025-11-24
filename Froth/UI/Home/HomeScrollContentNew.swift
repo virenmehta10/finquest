@@ -194,7 +194,8 @@ struct ProgressOverviewCard: View {
     @State private var statColumnWidth: CGFloat = 0
     
     private var progressToNext: Double {
-        min(1.0, Double(store.xp % 100) / 100.0)
+        let moduleProgress = store.getCurrentModuleProgress()
+        return min(1.0, Double(moduleProgress.xp % 100) / 100.0)
     }
     
     private var progressColor: Color {
@@ -245,46 +246,73 @@ struct ProgressOverviewCard: View {
                     
                     Spacer()
                     
-                // Animated level badge with cohesive gradient
-                ZStack {
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Brand.primaryBlue.opacity(0.7),
-                                        Brand.lightCoral.opacity(0.6),
-                                        Brand.softBlue.opacity(0.5),
-                                        Brand.accentBlue.opacity(0.4)
-                                    ],
-                                    startPoint: UnitPoint(x: (gradientShift.truncatingRemainder(dividingBy: 1.0)), y: 0),
-                                    endPoint: UnitPoint(x: (gradientShift.truncatingRemainder(dividingBy: 1.0)) + 0.6, y: 1)
-                                )
-                            )
-                            .frame(width: 80, height: 36)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [
-                                                Color.white.opacity(0.8),
-                                                Brand.primaryBlue.opacity(0.4)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 1.5
+                    // Module picker dropdown
+                    Menu {
+                        ForEach(store.getAllModules(), id: \.self) { module in
+                            Button(action: {
+                                // Defer state change to avoid publishing during view updates
+                                Task { @MainActor in
+                                    store.currentModule = module
+                                }
+                            }) {
+                                HStack {
+                                    Text(module)
+                                    if store.currentModule == module {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Brand.primaryBlue.opacity(0.7),
+                                            Brand.lightCoral.opacity(0.6),
+                                            Brand.softBlue.opacity(0.5),
+                                            Brand.accentBlue.opacity(0.4)
+                                        ],
+                                        startPoint: UnitPoint(x: (gradientShift.truncatingRemainder(dividingBy: 1.0)), y: 0),
+                                        endPoint: UnitPoint(x: (gradientShift.truncatingRemainder(dividingBy: 1.0)) + 0.6, y: 1)
                                     )
-                            )
-                            .shadow(color: Brand.primaryBlue.opacity(0.2), radius: glowAnimation ? 8 : 4, x: 0, y: 2)
-                            .scaleEffect(glowAnimation ? 1.03 : 1.0)
-                            .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: glowAnimation)
-                            .animation(.linear(duration: 10.0).repeatForever(autoreverses: false), value: gradientShift)
-                        
-                        Text("Level \(store.level)")
-                            .font(Brand.captionFont)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 1)
+                                )
+                                .frame(width: 160, height: 36)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(
+                                            LinearGradient(
+                                                colors: [
+                                                    Color.white.opacity(0.8),
+                                                    Brand.primaryBlue.opacity(0.4)
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ),
+                                            lineWidth: 1.5
+                                        )
+                                )
+                                .shadow(color: Brand.primaryBlue.opacity(0.2), radius: glowAnimation ? 8 : 4, x: 0, y: 2)
+                                .scaleEffect(glowAnimation ? 1.03 : 1.0)
+                                .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: glowAnimation)
+                                .animation(.linear(duration: 10.0).repeatForever(autoreverses: false), value: gradientShift)
+                            
+                            HStack(spacing: 4) {
+                                Text(store.currentModule)
+                                    .font(Brand.captionFont)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 1)
+                                    .lineLimit(1)
+                                
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 1)
+                            }
+                            .padding(.horizontal, 8)
+                        }
                     }
                 }
                 
@@ -370,10 +398,10 @@ struct ProgressOverviewCard: View {
                     // Compact Statistics with micro-interactions
                     VStack(alignment: .trailing, spacing: 8) {
                         CompactStatRow(
-                            icon: "star.fill",
-                            title: "Total XP",
-                            value: "\(store.xp)",
-                            color: Brand.gold,
+                            icon: "banknote.fill",
+                            title: "EOY Bonus",
+                            value: formatEOYBonus(store.getCurrentModuleProgress().totalPoints),
+                            color: Brand.emerald,
                             isHovered: $statHoverStates[0],
                             index: 0,
                             measuredWidth: $statColumnWidth,
@@ -394,7 +422,7 @@ struct ProgressOverviewCard: View {
                         CompactStatRow(
                             icon: "checkmark.seal.fill",
                             title: "Perfect Lessons",
-                            value: "\(store.perfectLessons)",
+                            value: "\(store.getCurrentModuleProgress().perfectLessons)",
                             color: Brand.emerald,
                             isHovered: $statHoverStates[2],
                             index: 2,
@@ -506,6 +534,14 @@ struct ProgressOverviewCard: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 shimmerOffset = 1.0
             }
+        }
+    }
+    
+    private func formatEOYBonus(_ points: Double) -> String {
+        if points.truncatingRemainder(dividingBy: 1) == 0 {
+            return "$\(Int(points))K"
+        } else {
+            return String(format: "$%.1fK", points)
         }
     }
 }

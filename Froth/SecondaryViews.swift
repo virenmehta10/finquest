@@ -3,9 +3,6 @@ import Combine
 import Charts
 import AudioToolbox
 import UIKit
-import FirebaseCore
-import FirebaseAuth
-
 // MARK: - Finance Road Quest
 
 struct QuestView: View {
@@ -19,7 +16,8 @@ struct QuestView: View {
     @State private var showProUpgrade = false
     
     private var unlockedCount: Int {
-        max(1, store.completedLessonIDs.count + 1)
+        let moduleProgress = store.getCurrentModuleProgress()
+        return max(1, moduleProgress.completedLessonIDs.count + 1)
     }
     
     // Per-module unlock logic: Level 1 is always unlocked, Level 2 unlocks after Level 1 completion, Levels 3+ require pro
@@ -83,9 +81,10 @@ struct QuestView: View {
                                 // Four levels for the selected module
                                 VStack(spacing: 60) { // Increased spacing for better visual separation
                                     let moduleLessons = store.getCurrentModuleLessons()
+                                    let moduleProgress = store.getCurrentModuleProgress()
                                     ForEach(moduleLessons.indices, id: \.self) { index in
                                         let lesson = moduleLessons[index]
-                                        let isUnlocked = isLessonUnlocked(lesson: lesson, completedIDs: store.completedLessonIDs)
+                                        let isUnlocked = isLessonUnlocked(lesson: lesson, completedIDs: moduleProgress.completedLessonIDs)
                                         QuestLevelNodeView(lesson: lesson, index: index, isUnlocked: isUnlocked, geometry: geometry, showProUpgrade: $showProUpgrade)
                                             .transition(.asymmetric(
                                                 insertion: .scale(scale: 0.7).combined(with: .opacity).combined(with: .offset(y: 50)),
@@ -141,9 +140,11 @@ struct QuestView: View {
                                         impactFeedback.impactOccurred()
                                     }
                                     
-                                    // Update module with animation
-                                    withAnimation(.spring(response: 0.7, dampingFraction: 0.75)) {
-                                        store.currentModule = module
+                                    // Update module - defer to avoid publishing during view updates
+                                    DispatchQueue.main.async {
+                                        withAnimation(.spring(response: 0.7, dampingFraction: 0.75)) {
+                                            store.currentModule = module
+                                        }
                                     }
                                 }
                             }
@@ -188,9 +189,10 @@ struct QuestView: View {
                     // Check if we should show unlock animation in selected module
                     if store.shouldShowUnlockAnimation {
                         let moduleLessons = store.getCurrentModuleLessons()
+                        let moduleProgress = store.getCurrentModuleProgress()
                         for (index, lesson) in moduleLessons.enumerated() {
-                            let isUnlocked = isLessonUnlocked(lesson: lesson, completedIDs: store.completedLessonIDs)
-                            if isUnlocked && !store.completedLessonIDs.contains(lesson.id) {
+                            let isUnlocked = isLessonUnlocked(lesson: lesson, completedIDs: moduleProgress.completedLessonIDs)
+                            if isUnlocked && !moduleProgress.completedLessonIDs.contains(lesson.id) {
                                 unlockedLessonIndex = index
                                 break
                             }
@@ -339,9 +341,10 @@ struct QuestRoadView: View {
     @State private var sparkleAnimation = false
     
     private var progressPercentage: Double {
-        let completedCount = store.completedLessonIDs.count
-        let totalLessons = ContentProvider.sampleLessons.count
-        return Double(completedCount) / Double(max(1, totalLessons))
+        let moduleProgress = store.getCurrentModuleProgress()
+        let moduleLessons = store.getCurrentModuleLessons()
+        let completedCount = moduleProgress.completedLessonIDs.count
+        return Double(completedCount) / Double(max(1, moduleLessons.count))
     }
     
     var body: some View {
@@ -488,8 +491,6 @@ struct QuestLevelNodeView: View {
     
     private var nodeSide: HorizontalAlignment { index % 2 == 0 ? .leading : .trailing }
     private var xOffset: CGFloat {
-        // Push nodes slightly more outward from road centerline
-        let maxOffset = min(geometry.size.width * 0.24, 170)
         // Move left-side nodes (Financial Statements, DCF Fundamentals, LBO Fundamentals) further left
         let leftOffset = min(geometry.size.width * 0.32, 230) // Increased offset for left nodes - one more tick
         // Move right-side nodes (Accounting Basics, Valuation & EV, M&A Fundamentals) further right
@@ -588,7 +589,7 @@ struct QuestLevelNodeView: View {
                         x: 0,
                         y: 8
                     )
-                if store.completedLessonIDs.contains(lesson.id) {
+                if store.getCurrentModuleProgress().completedLessonIDs.contains(lesson.id) {
                     // Completed lesson - green checkmark
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 24, weight: .bold))
@@ -2375,983 +2376,12 @@ struct QuickStartCard: View {
     }
 }
 
-// MARK: - Missing Views
-
-struct RegistrationView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var store: AppStore
-    @StateObject private var verificationService = EmailVerificationService()
-    @State private var firstName: String = ""
-    @State private var email: String = ""
-    @State private var phoneNumber: String = ""
-    @State private var password: String = ""
-    @State private var isLoading = false
-    @State private var animateFields = false
-    @State private var showSuccessAnimation = false
-    @State private var animateBackground = false
-    @State private var showEmailVerification = false
-    @State private var showSignIn = false
-    
-    let onComplete: () -> Void
-    
-    private var formProgress: Double {
-        let completedFields = [firstName.count >= 2, email.contains("@") && !email.hasSuffix(".edu"), phoneNumber.filter { $0.isNumber }.count >= 10].filter { $0 }.count
-        return Double(completedFields) / 3.0
-    }
-    
-    var body: some View {
-        ZStack {
-            // Enhanced background with animated elements
-            Brand.backgroundGradient
-                .ignoresSafeArea(.all)
-            
-            // Floating animated elements - fixed positions to prevent movement
-            ForEach(0..<6, id: \.self) { index in
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Brand.primaryBlue.opacity(0.1), Brand.lightCoral.opacity(0.05)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 80, height: 80)
-                    .offset(
-                        x: CGFloat(index * 100 - 250),
-                        y: CGFloat(index * 80 - 200)
-                    )
-                    .animation(
-                        .easeInOut(duration: 4.0)
-                        .repeatForever(autoreverses: true)
-                        .delay(Double(index) * 0.5),
-                        value: animateBackground
-                    )
-            }
-            
-            ScrollView {
-            VStack(spacing: 0) {
-                    // Enhanced header section
-                    VStack(spacing: 24) {
-                        // App logo/icon
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Brand.primaryBlue.opacity(0.2), Brand.lightCoral.opacity(0.1)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 100, height: 100)
-                                .blur(radius: 20)
-                            
-                            Image(systemName: "graduationcap.fill")
-                                .font(.system(size: 40, weight: .bold))
-                                .foregroundColor(Brand.primaryBlue)
-                        }
-                        .scaleEffect(animateFields ? 1.0 : 0.8)
-                        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateFields)
-                        
-                        // Removed title and subtitle for cleaner design
-                        .opacity(animateFields ? 1.0 : 0.0)
-                        .offset(y: animateFields ? 0 : 20)
-                        .animation(.easeOut(duration: 0.8).delay(0.4), value: animateFields)
-                }
-                    .padding(.top, 40)
-                    .padding(.horizontal, 24)
-                    
-                    // Progress indicator
-                    VStack(spacing: 12) {
-                        HStack {
-                            Text("Account Setup")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(Brand.textPrimary)
-                            
-                            Spacer()
-                            
-                            Text("\(Int(formProgress * 100))% Complete")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Brand.textSecondary)
-                        }
-                        
-                        ProgressView(value: formProgress)
-                            .tint(Brand.primaryBlue)
-                            .scaleEffect(x: 1, y: 1.5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.gray.opacity(0.2))
-                            )
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 40)
-                    .opacity(animateFields ? 1.0 : 0.0)
-                    .offset(y: animateFields ? 0 : 20)
-                    .animation(.easeOut(duration: 0.8).delay(0.6), value: animateFields)
-                    
-                    // Enhanced form fields
-                    VStack(spacing: 20) {
-                        EnhancedFirstNameField(firstName: $firstName)
-                            .opacity(animateFields ? 1.0 : 0.0)
-                            .offset(x: animateFields ? 0 : -30)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.8), value: animateFields)
-                        
-                        EnhancedEmailField(email: $email)
-                            .opacity(animateFields ? 1.0 : 0.0)
-                            .offset(x: animateFields ? 0 : -30)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.0), value: animateFields)
-                            .onChange(of: email) { _, _ in
-                                // Clear error when user starts typing
-                                if verificationService.errorMessage != nil {
-                                    verificationService.errorMessage = nil
-                                }
-                            }
-                        
-                        EnhancedPhoneNumberField(phoneNumber: $phoneNumber)
-                            .opacity(animateFields ? 1.0 : 0.0)
-                            .offset(x: animateFields ? 0 : -30)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.2), value: animateFields)
-                        
-                        // Error message display for registration
-                        if let errorMessage = verificationService.errorMessage {
-                            Text(errorMessage)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.red)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.red.opacity(0.1))
-                                )
-                                .opacity(animateFields ? 1.0 : 0.0)
-                                .offset(x: animateFields ? 0 : -30)
-                                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(1.4), value: animateFields)
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 30)
-                    
-                    Spacer(minLength: 20)
-                    
-                    // Enhanced continue button
-                VStack(spacing: 16) {
-                    // Create Account - Text with arrow (black text, functions like button)
-                    Button(action: {
-                        handleContinue()
-                    }) {
-                        HStack(spacing: 8) {
-                            if isLoading {
-                                ProgressView()
-                                    .scaleEffect(0.9)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                            } else if showSuccessAnimation {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.black)
-                            } else {
-                                Text("Create Account")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.black)
-                                
-                                Image(systemName: "arrow.right")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.black)
-                            }
-                        }
-                    }
-                    .disabled(!isFormValid || isLoading)
-                    .opacity(isFormValid ? 1.0 : 0.5)
-                    
-                    // Sign in option
-                    Button(action: {
-                        showSignIn = true
-                    }) {
-                        Text("Sign in")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Brand.primaryBlue)
-                    }
-                    .padding(.top, 4)
-                    
-                    // Simplified terms
-                    HStack(spacing: 8) {
-                        Button("Terms of Service") {
-                            // Handle terms
-                        }
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Brand.primaryBlue)
-                        
-                        Text("•")
-                            .font(.system(size: 14))
-                            .foregroundColor(Brand.textSecondary)
-                        
-                        Button("Privacy Policy") {
-                            // Handle privacy
-                        }
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Brand.primaryBlue)
-                    }
-                    .padding(.top, 8)
-                }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 30)
-                    .opacity(animateFields ? 1.0 : 0.0)
-                    .offset(y: animateFields ? 0 : 30)
-                    .animation(.easeOut(duration: 0.8).delay(1.4), value: animateFields)
-                }
-            }
-            .scrollIndicators(.hidden)
-        }
-        .onAppear {
-            withAnimation {
-                animateFields = true
-            }
-            // Start background animation immediately and keep it running
-            animateBackground = true
-        }
-        .sheet(isPresented: $showEmailVerification) {
-            EmailVerificationView(
-                verificationService: verificationService,
-                onVerified: {
-                    showEmailVerification = false
-                    onComplete()
-                },
-                userEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                userName: firstName.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-            .environmentObject(store)
-        }
-        .sheet(isPresented: $showSignIn) {
-            SignInView(
-                verificationService: verificationService,
-                onSignInSuccess: {
-                    showSignIn = false
-                    // Clear any error messages when sign-in succeeds
-                    verificationService.errorMessage = nil
-                    onComplete()
-                }
-            )
-            .environmentObject(store)
-            .onAppear {
-                // Clear error messages when sign-in sheet appears
-                verificationService.errorMessage = nil
-            }
-        }
-    }
-    
-    private var isFormValid: Bool {
-        let phoneDigits = phoneNumber.filter { $0.isNumber }
-        return !firstName.isEmpty && firstName.count >= 2 && 
-               !email.isEmpty && email.contains("@") && !email.hasSuffix(".edu") &&
-               !phoneNumber.isEmpty && phoneDigits.count >= 10
-    }
-    
-    private func handleContinue() {
-        isLoading = true
-        
-        Task {
-            do {
-                // Generate a secure password if not provided
-                let userPassword = password.isEmpty ? generateSecurePassword() : password
-                
-                // Save registration data to store first
-                store.username = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
-                store.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
-                store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-                
-                // Create Firebase account and send verification email
-                let userId = try await verificationService.createAccount(
-                    email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                    password: userPassword,
-                    username: firstName.trimmingCharacters(in: .whitespacesAndNewlines)
-                )
-                
-                isLoading = false
-                
-                // Show email verification screen
-                showEmailVerification = true
-            } catch {
-                isLoading = false
-                // Error is handled by verificationService.errorMessage
-                // DO NOT continue if email already exists - force user to sign in
-                if let nsError = error as NSError? {
-                    if nsError.code == AuthErrorCode.emailAlreadyInUse.rawValue {
-                        // Email already exists - DO NOT proceed, show error and force sign-in
-                        print("❌ Account creation blocked - email already exists")
-                        return // Stop here, don't call onComplete()
-                    }
-                }
-                // For other errors, also don't proceed
-                print("❌ Account creation failed: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    private func generateSecurePassword() -> String {
-        // Generate a secure random password
-        let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-        return String((0..<16).map { _ in characters.randomElement()! })
-    }
-}
-
-// MARK: - Sign In View
-
-struct SignInView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var store: AppStore
-    @ObservedObject var verificationService: EmailVerificationService
-    @State private var email: String = ""
-    @State private var phoneNumber: String = ""
-    @State private var isLoading = false
-    @FocusState private var focusedField: Field?
-    
-    enum Field {
-        case email, phoneNumber
-    }
-    
-    let onSignInSuccess: () -> Void
-    
-    private var isFormValid: Bool {
-        let phoneDigits = phoneNumber.filter { $0.isNumber }
-        return !email.isEmpty && email.contains("@") && !phoneNumber.isEmpty && phoneDigits.count >= 10
-    }
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                Brand.backgroundGradient
-                    .ignoresSafeArea(.all)
-                
-                ScrollView {
-                    VStack(spacing: 32) {
-                        // Header
-                        VStack(spacing: 16) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 60, weight: .medium))
-                                .foregroundColor(Brand.primaryBlue)
-                            
-                            Text("Sign In")
-                                .font(.system(size: 32, weight: .bold))
-                                .foregroundColor(Brand.textPrimary)
-                            
-                            Text("Welcome back! Sign in to continue your learning journey.")
-                                .font(.system(size: 16, weight: .regular))
-                                .foregroundColor(Brand.textSecondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 24)
-                        }
-                        .padding(.top, 40)
-                        
-                        // Form fields
-                        VStack(spacing: 20) {
-                            // Email field
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Email")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(Brand.textPrimary)
-                                
-                                TextField("Enter your email", text: $email)
-                                    .focused($focusedField, equals: .email)
-                                    .keyboardType(.emailAddress)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled(true)
-                                    .font(.system(size: 18, weight: .medium))
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 18)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .fill(Color.white.opacity(0.8))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 16)
-                                                    .stroke(focusedField == .email ? Brand.primaryBlue : Color.gray.opacity(0.2), lineWidth: focusedField == .email ? 2 : 1)
-                                            )
-                                    )
-                                    .onChange(of: email) { _, _ in
-                                        // Clear error when user starts typing
-                                        if verificationService.errorMessage != nil {
-                                            verificationService.errorMessage = nil
-                                        }
-                                    }
-                            }
-                            
-                            // Phone number field
-                            EnhancedPhoneNumberField(phoneNumber: $phoneNumber)
-                            
-                            // Error message
-                            if let errorMessage = verificationService.errorMessage {
-                                Text(errorMessage)
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.red)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color.red.opacity(0.1))
-                                    )
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        
-                        // Sign in button
-                        Button(action: {
-                            handleSignIn()
-                        }) {
-                            HStack(spacing: 8) {
-                                if isLoading {
-                                    ProgressView()
-                                        .scaleEffect(0.9)
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else {
-                                    Text("Sign In")
-                                        .font(.system(size: 18, weight: .semibold))
-                                    
-                                    Image(systemName: "arrow.right")
-                                        .font(.system(size: 16, weight: .semibold))
-                                }
-                            }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(
-                                LinearGradient(
-                                    colors: isFormValid && !isLoading ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.3), Color.gray.opacity(0.2)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .shadow(
-                                color: isFormValid && !isLoading ? Brand.primaryBlue.opacity(0.3) : Color.clear,
-                                radius: isFormValid && !isLoading ? 12 : 0,
-                                x: 0,
-                                y: 6
-                            )
-                        }
-                        .disabled(!isFormValid || isLoading)
-                        .padding(.horizontal, 24)
-                        
-                        Spacer(minLength: 20)
-                    }
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        // Clear error messages when canceling
-                        verificationService.errorMessage = nil
-                        dismiss()
-                    }
-                    .foregroundColor(Brand.primaryBlue)
-                }
-            }
-            .onAppear {
-                // Clear error messages when sign-in view appears
-                verificationService.errorMessage = nil
-            }
-        }
-    }
-    
-    private func handleSignIn() {
-        // Clear any previous error messages before attempting sign-in
-        verificationService.errorMessage = nil
-        isLoading = true
-        
-        Task {
-            do {
-                try await verificationService.signIn(
-                    email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                    phoneNumber: phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-                )
-                
-                // Check if user is actually signed in (not just link sent)
-                if let user = Auth.auth().currentUser {
-                    // User is signed in - update store and complete sign-in
-                    store.email = user.email ?? email.trimmingCharacters(in: .whitespacesAndNewlines)
-                    store.phoneNumber = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-                    store.username = user.displayName ?? store.username
-                    
-                    isLoading = false
-                    // Clear any error messages on successful sign-in
-                    verificationService.errorMessage = nil
-                    onSignInSuccess()
-                } else {
-                    // Link was sent but user not signed in yet
-                    // Keep the message visible but don't complete sign-in
-                    isLoading = false
-                    // Error message is already set by verificationService
-                }
-            } catch {
-                isLoading = false
-                // Error is handled by verificationService.errorMessage
-            }
-        }
-    }
-}
-
-// MARK: - Enhanced Form Fields
-
-struct EnhancedFirstNameField: View {
-    @Binding var firstName: String
-    @FocusState private var isFocused: Bool
-    @State private var animateIcon = false
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Brand.primaryBlue)
-                    .scaleEffect(animateIcon ? 1.2 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: animateIcon)
-                
-                Text("First Name")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Brand.textPrimary)
-            }
-            
-            ZStack {
-                // Background with glassmorphism effect
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                LinearGradient(
-                                    colors: isFocused ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.2), Color.gray.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: isFocused ? 2 : 1
-                            )
-                    )
-                    .shadow(
-                        color: isFocused ? Brand.primaryBlue.opacity(0.2) : Color.black.opacity(0.05),
-                        radius: isFocused ? 8 : 4,
-                        x: 0,
-                        y: isFocused ? 4 : 2
-                    )
-                
-                TextField("Enter your first name", text: $firstName)
-                    .focused($isFocused)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled(false)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Brand.textPrimary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 18)
-            }
-            .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    animateIcon = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    animateIcon = false
-                }
-            }
-            
-            // Validation feedback
-            HStack(spacing: 6) {
-                Image(systemName: firstName.count >= 2 ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundColor(firstName.count >= 2 ? Brand.emerald : Color.gray.opacity(0.4))
-                
-                Text(firstName.count >= 2 ? "Looks good!" : "Enter at least 2 characters")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(firstName.count >= 2 ? Brand.emerald : Brand.textSecondary)
-            }
-            .opacity(firstName.isEmpty ? 0 : 1)
-            .animation(.easeInOut(duration: 0.3), value: firstName.isEmpty)
-        }
-    }
-}
-
-struct EnhancedEmailField: View {
-    @Binding var email: String
-    @FocusState private var isFocused: Bool
-    @State private var animateIcon = false
-    
-    private var isValid: Bool {
-        email.contains("@") && !email.hasSuffix(".edu") && !email.isEmpty
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "envelope.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Brand.primaryBlue)
-                    .scaleEffect(animateIcon ? 1.2 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: animateIcon)
-                
-                Text("Email Address")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Brand.textPrimary)
-            }
-            
-            ZStack {
-                // Background with glassmorphism effect
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                LinearGradient(
-                                    colors: isFocused ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.2), Color.gray.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: isFocused ? 2 : 1
-                            )
-                    )
-                    .shadow(
-                        color: isFocused ? Brand.primaryBlue.opacity(0.2) : Color.black.opacity(0.05),
-                        radius: isFocused ? 8 : 4,
-                        x: 0,
-                        y: isFocused ? 4 : 2
-                    )
-                
-                TextField("Enter your email", text: $email)
-                    .focused($isFocused)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Brand.textPrimary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 18)
-            }
-            .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    animateIcon = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    animateIcon = false
-                }
-            }
-            
-            // Validation feedback
-            HStack(spacing: 6) {
-                Image(systemName: isValid ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundColor(isValid ? Brand.emerald : Color.gray.opacity(0.4))
-                
-                Text(isValid ? "Valid email!" : "Must be a personal email (not .edu)")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(isValid ? Brand.emerald : Brand.textSecondary)
-            }
-            .opacity(email.isEmpty ? 0 : 1)
-            .animation(.easeInOut(duration: 0.3), value: email.isEmpty)
-        }
-    }
-}
-
-struct EnhancedPhoneNumberField: View {
-    @Binding var phoneNumber: String
-    @FocusState private var isFocused: Bool
-    @State private var animateIcon = false
-    
-    private var isValid: Bool {
-        phoneNumber.filter { $0.isNumber }.count >= 10
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "phone.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Brand.primaryBlue)
-                    .scaleEffect(animateIcon ? 1.2 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: animateIcon)
-                
-                Text("Phone Number")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Brand.textPrimary)
-            }
-            
-            ZStack {
-                // Background with glassmorphism effect
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                LinearGradient(
-                                    colors: isFocused ? [Brand.primaryBlue, Brand.lightCoral] : [Color.gray.opacity(0.2), Color.gray.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: isFocused ? 2 : 1
-                            )
-                    )
-                    .shadow(
-                        color: isFocused ? Brand.primaryBlue.opacity(0.2) : Color.black.opacity(0.05),
-                        radius: isFocused ? 8 : 4,
-                        x: 0,
-                        y: isFocused ? 4 : 2
-                    )
-                
-                TextField("123-456-7890", text: $phoneNumber)
-                    .focused($isFocused)
-                    .keyboardType(.phonePad)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Brand.textPrimary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 18)
-            }
-            .onTapGesture {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    animateIcon = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    animateIcon = false
-                }
-            }
-            .onChange(of: phoneNumber) { newValue in
-                // Format phone number with dashes
-                let digits = newValue.filter { $0.isNumber }
-                if digits.count <= 10 {
-                    if digits.count <= 3 {
-                        phoneNumber = digits
-                    } else if digits.count <= 6 {
-                        phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3))"
-                    } else {
-                        phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3).prefix(3))-\(digits.dropFirst(6))"
-                    }
-                }
-            }
-            
-            // Validation feedback
-            HStack(spacing: 6) {
-                Image(systemName: isValid ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundColor(isValid ? Brand.emerald : Color.gray.opacity(0.4))
-                
-                Text(isValid ? "Phone number looks good!" : "Enter a valid phone number")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(isValid ? Brand.emerald : Brand.textSecondary)
-            }
-            .opacity(phoneNumber.isEmpty ? 0 : 1)
-            .animation(.easeInOut(duration: 0.3), value: phoneNumber.isEmpty)
-        }
-    }
-}
-
-struct PhoneNumberField: View {
-    @Binding var phoneNumber: String
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Phone Number")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-            
-            TextField("123-456-7890", text: $phoneNumber)
-                .focused($isFocused)
-                .keyboardType(.phonePad)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .font(.system(size: 18, weight: .medium))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(isFocused ? Color.blue.opacity(0.8) : (phoneNumber.count >= 10 ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (phoneNumber.count >= 10 ? 2 : 1))
-                        )
-                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
-                )
-                .onChange(of: phoneNumber) { newValue in
-                    // Format phone number with dashes
-                    let digits = newValue.filter { $0.isNumber }
-                    if digits.count <= 10 {
-                        if digits.count <= 3 {
-                            phoneNumber = digits
-                        } else if digits.count <= 6 {
-                            phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3))"
-                        } else {
-                            phoneNumber = "\(digits.prefix(3))-\(digits.dropFirst(3).prefix(3))-\(digits.dropFirst(6))"
-                        }
-                    }
-                }
-            
-            HStack(spacing: 8) {
-                Image(systemName: "phone.fill")
-                    .font(.caption)
-                    .foregroundColor(.blue)
-                
-                Text("We'll use this to verify your account")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-}
-
-struct FirstNameField: View {
-    @Binding var firstName: String
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("First Name")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-            
-            TextField("Enter your first name", text: $firstName)
-                .focused($isFocused)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled(false)
-                .font(.system(size: 18, weight: .medium))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(isFocused ? Color.blue.opacity(0.8) : (firstName.count >= 2 ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (firstName.count >= 2 ? 2 : 1))
-                        )
-                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
-                )
-            
-            HStack(spacing: 8) {
-                Image(systemName: "person.fill")
-                    .font(.caption)
-                    .foregroundColor(.blue)
-                
-                Text("This will be your display name")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-}
-
-struct EmailField: View {
-    @Binding var email: String
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Email Address")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-            
-            TextField("Enter your email", text: $email)
-                .focused($isFocused)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .font(.system(size: 18, weight: .medium))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(isFocused ? Color.blue.opacity(0.8) : (email.contains("@") && !email.hasSuffix(".edu") && !email.isEmpty ? Color.green.opacity(0.5) : Color.gray.opacity(0.2)), lineWidth: isFocused ? 2 : (email.contains("@") && !email.hasSuffix(".edu") && !email.isEmpty ? 2 : 1))
-                        )
-                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
-                )
-            
-            HStack(spacing: 8) {
-                Image(systemName: "envelope.fill")
-                    .font(.caption)
-                    .foregroundColor(.blue)
-                
-                Text("Must be a personal email (not .edu)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-}
-
-struct UsernameField: View {
-    @Binding var username: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Username")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-            
-            TextField("Choose a username", text: $username)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .font(.system(size: 18, weight: .medium))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
-                )
-            
-            Text("This will be shown on your profile and leaderboard")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
-        }
-    }
-}
-
-struct PrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(.white)
-            .font(.headline)
-            .padding(.vertical, 16)
-            .padding(.horizontal, 32)
-            .background(
-                LinearGradient(
-                    colors: [Color.blue, Color.purple],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
-struct SecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(.blue)
-            .font(.headline)
-            .padding(.vertical, 16)
-            .padding(.horizontal, 32)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.blue, lineWidth: 2)
-            )
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
 struct OnboardingView: View {
     @EnvironmentObject var store: AppStore
+    @ObservedObject var authManager: AuthManager
     @State private var currentPage = 0
     @State private var showRegistration = false
+    @State private var showSignIn = false
     
     let onComplete: () -> Void
     
@@ -3454,11 +2484,562 @@ struct OnboardingView: View {
         }
         .colorScheme(.light)
         .sheet(isPresented: $showRegistration) {
-            RegistrationView(onComplete: {
-                onComplete() // Call the OnboardingView's completion handler
+            RegistrationView(authManager: authManager, onComplete: onComplete, onShowSignIn: {
+                showRegistration = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showSignIn = true
+                }
             })
-                .environmentObject(store)
         }
+        .sheet(isPresented: $showSignIn) {
+            SignInView(authManager: authManager, onComplete: onComplete, onShowRegistration: {
+                showSignIn = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showRegistration = true
+                }
+            })
+        }
+    }
+}
+
+struct RegistrationView: View {
+    @ObservedObject var authManager: AuthManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var firstName: String = ""
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var confirmPassword: String = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showEmailVerification = false
+    
+    let onComplete: () -> Void
+    let onShowSignIn: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Brand.onboardingBackgroundGradient
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Header
+                        VStack(spacing: 8) {
+                            Text("Create Account")
+                                .font(.largeTitle.weight(.bold))
+                                .foregroundColor(Brand.textPrimary)
+                            
+                            Text("Get started with Alpha")
+                                .font(.subheadline)
+                                .foregroundColor(Brand.textSecondary)
+                        }
+                        .padding(.top, 40)
+                        
+                        // Form fields
+                        VStack(spacing: 20) {
+                            // First Name
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("First Name")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                TextField("Enter your first name", text: $firstName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .autocapitalization(.words)
+                            }
+                            
+                            // Email
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Email")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                TextField("Enter your email", text: $email)
+                                    .textFieldStyle(.roundedBorder)
+                                    .keyboardType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                            
+                            // Password
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Password")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                SecureField("Enter your password", text: $password)
+                                    .textFieldStyle(.roundedBorder)
+                                    .textContentType(.newPassword)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                            
+                            // Confirm Password
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Confirm Password")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                SecureField("Confirm your password", text: $confirmPassword)
+                                    .textFieldStyle(.roundedBorder)
+                                    .textContentType(.newPassword)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                        
+                        // Validation message
+                        if !isFormValid && !firstName.isEmpty {
+                            let validationMessage = getValidationMessage()
+                            if !validationMessage.isEmpty {
+                                Text(validationMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                                    .padding(.horizontal, 32)
+                            }
+                        }
+                        
+                        // Error message
+                        if let errorMessage = errorMessage {
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(.horizontal, 32)
+                        }
+                        
+                        // Create Account button
+                        Button(action: createAccount) {
+                            HStack {
+                                if isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Text("Create Account")
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                LinearGradient(
+                                    colors: isFormValid ? [Brand.primaryBlue, Brand.accentBlue] : [Color.gray, Color.gray.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                        }
+                        .disabled(isLoading)
+                        .opacity(isLoading ? 0.6 : 1.0)
+                        .padding(.horizontal, 32)
+                        .padding(.top, 8)
+                        
+                        // Sign In button
+                        Button(action: {
+                            dismiss()
+                            onShowSignIn()
+                        }) {
+                            HStack(spacing: 4) {
+                                Text("Already have an account?")
+                                    .font(.subheadline)
+                                    .foregroundColor(Brand.textSecondary)
+                                Text("Sign In")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Brand.primaryBlue)
+                            }
+                        }
+                        .padding(.top, 16)
+                    }
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .sheet(isPresented: $showEmailVerification) {
+                EmailVerificationView(authManager: authManager, email: email, onComplete: onComplete)
+            }
+        }
+    }
+    
+    private var isFormValid: Bool {
+        !firstName.isEmpty &&
+        !email.isEmpty &&
+        email.contains("@") &&
+        password.count >= 6 &&
+        password == confirmPassword
+    }
+    
+    private func getValidationMessage() -> String {
+        if firstName.isEmpty {
+            return "Please enter your first name"
+        }
+        if email.isEmpty {
+            return "Please enter your email"
+        }
+        if !email.contains("@") {
+            return "Please enter a valid email address"
+        }
+        if password.count < 6 {
+            return "Password must be at least 6 characters"
+        }
+        if password != confirmPassword {
+            return "Passwords do not match"
+        }
+        return ""
+    }
+    
+    private func createAccount() {
+        guard isFormValid else {
+            errorMessage = getValidationMessage()
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        authManager.signUp(email: email, password: password) { result in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                switch result {
+                case .success:
+                    showEmailVerification = true
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+struct SignInView: View {
+    @ObservedObject var authManager: AuthManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showEmailVerification = false
+    
+    let onComplete: () -> Void
+    let onShowRegistration: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Brand.onboardingBackgroundGradient
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Header
+                        VStack(spacing: 8) {
+                            Text("Sign In")
+                                .font(.largeTitle.weight(.bold))
+                                .foregroundColor(Brand.textPrimary)
+                            
+                            Text("Welcome back to Alpha")
+                                .font(.subheadline)
+                                .foregroundColor(Brand.textSecondary)
+                        }
+                        .padding(.top, 40)
+                        
+                        // Form fields
+                        VStack(spacing: 20) {
+                            // Email
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Email")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                TextField("Enter your email", text: $email)
+                                    .textFieldStyle(.roundedBorder)
+                                    .keyboardType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                            
+                            // Password
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Password")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Brand.textPrimary)
+                                
+                                SecureField("Enter your password", text: $password)
+                                    .textFieldStyle(.roundedBorder)
+                                    .textContentType(.password)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                        
+                        // Error message
+                        if let errorMessage = errorMessage {
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(.horizontal, 32)
+                        }
+                        
+                        // Sign In button
+                        Button(action: signIn) {
+                            HStack {
+                                if isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Text("Sign In")
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                LinearGradient(
+                                    colors: isFormValid ? [Brand.primaryBlue, Brand.accentBlue] : [Color.gray, Color.gray.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                        }
+                        .disabled(isLoading)
+                        .opacity(isLoading ? 0.6 : 1.0)
+                        .padding(.horizontal, 32)
+                        .padding(.top, 8)
+                        
+                        // Create Account button
+                        Button(action: {
+                            dismiss()
+                            onShowRegistration()
+                        }) {
+                            HStack(spacing: 4) {
+                                Text("Don't have an account?")
+                                    .font(.subheadline)
+                                    .foregroundColor(Brand.textSecondary)
+                                Text("Create Account")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Brand.primaryBlue)
+                            }
+                        }
+                        .padding(.top, 16)
+                    }
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .sheet(isPresented: $showEmailVerification) {
+                EmailVerificationView(authManager: authManager, email: email, onComplete: onComplete)
+            }
+        }
+    }
+    
+    private var isFormValid: Bool {
+        !email.isEmpty &&
+        email.contains("@") &&
+        !password.isEmpty
+    }
+    
+    private func signIn() {
+        guard isFormValid else {
+            errorMessage = "Please enter your email and password"
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        authManager.signIn(email: email, password: password) { result in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                switch result {
+                case .success:
+                    // Check if email is verified
+                    if authManager.isEmailVerified {
+                        onComplete()
+                        dismiss()
+                    } else {
+                        showEmailVerification = true
+                    }
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+struct EmailVerificationView: View {
+    @ObservedObject var authManager: AuthManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var isChecking = false
+    @State private var checkCount = 0
+    @State private var timer: Timer?
+    
+    let email: String
+    let onComplete: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Brand.onboardingBackgroundGradient
+                    .ignoresSafeArea()
+                
+                VStack(spacing: 32) {
+                    Spacer()
+                    
+                    // Icon
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(Brand.primaryBlue)
+                        .padding(.bottom, 20)
+                    
+                    // Title and message
+                    VStack(spacing: 16) {
+                        Text("Verify Your Email")
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundColor(Brand.textPrimary)
+                        
+                        Text("We've sent a verification link to")
+                            .font(.body)
+                            .foregroundColor(Brand.textSecondary)
+                        
+                        Text(email)
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(Brand.primaryBlue)
+                        
+                        Text("Please check your email and click the verification link to continue.")
+                            .font(.subheadline)
+                            .foregroundColor(Brand.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                    
+                    // Resend button
+                    Button(action: resendVerification) {
+                        Text("Resend Verification Email")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(Brand.primaryBlue)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 24)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Brand.primaryBlue.opacity(0.1))
+                            )
+                    }
+                    
+                    // Check verification status
+                    if isChecking {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Checking verification status...")
+                                .font(.caption)
+                                .foregroundColor(Brand.textSecondary)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Instructions
+                    VStack(spacing: 8) {
+                        Text("After verifying, tap the button below to continue")
+                            .font(.caption)
+                            .foregroundColor(Brand.textSecondary)
+                        
+                        Button(action: checkVerification) {
+                            Text("I've Verified My Email")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(
+                                    LinearGradient(
+                                        colors: [Brand.primaryBlue, Brand.accentBlue],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal, 32)
+                    }
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") {
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                startChecking()
+            }
+            .onDisappear {
+                stopChecking()
+            }
+        }
+    }
+    
+    private func resendVerification() {
+        authManager.resendVerificationEmail { result in
+            // Handle result if needed
+        }
+    }
+    
+    private func checkVerification() {
+        isChecking = true
+        authManager.refreshUser { isVerified in
+            DispatchQueue.main.async {
+                isChecking = false
+                if isVerified {
+                    stopChecking()
+                    onComplete()
+                    dismiss()
+                }
+            }
+        }
+    }
+    
+    private func startChecking() {
+        // Check every 3 seconds if email is verified
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            authManager.refreshUser { isVerified in
+                DispatchQueue.main.async {
+                    if isVerified {
+                        stopChecking()
+                        onComplete()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func stopChecking() {
+        timer?.invalidate()
+        timer = nil
     }
 }
 
@@ -4105,7 +3686,6 @@ struct LessonPlayView: View {
     let lesson: Lesson
     @State private var currentIndex: Int = 0
     @State private var score: Int = 0
-    @State private var showResults: Bool = false
     @State private var showHint: Bool = false
     @State private var animateQuestion = false
     @State private var showCelebration = false
@@ -4117,6 +3697,10 @@ struct LessonPlayView: View {
     
     var progress: Double {
         Double(currentIndex) / Double(lesson.questions.count)
+    }
+    
+    private var isShowingResults: Bool {
+        currentIndex >= lesson.questions.count
     }
     
     var body: some View {
@@ -4132,13 +3716,14 @@ struct LessonPlayView: View {
                         Button("← Back") {
                             dismiss()
                         }
-                        .foregroundColor(Brand.teal)
+                        .foregroundColor(isShowingResults ? .black : Brand.teal)
+                        .font(.body.weight(.medium))
                         
                         Spacer()
                         
                         Text("\(min(currentIndex + 1, lesson.questions.count))/\(lesson.questions.count)")
-                            .font(Brand.subheadlineFont)
-                            .foregroundColor(Brand.textSecondary)
+                            .font(Brand.subheadlineFont.weight(.semibold))
+                            .foregroundColor(isShowingResults ? .black : Brand.textSecondary)
                     }
                     
                     // Progress bar
@@ -4166,52 +3751,42 @@ struct LessonPlayView: View {
                     HStack {
                         Text(lesson.title)
                             .font(.title2.weight(.semibold)) // Smaller than headlineFont
-                            .foregroundColor(Brand.textPrimary)
+                            .foregroundColor(isShowingResults ? .black : Brand.textPrimary)
                         
                         Spacer()
                         
                         VStack(alignment: .trailing, spacing: 4) {
                             HStack(spacing: 8) {
-                                // Points display
+                                // Points display (now as money)
                                 HStack(spacing: 4) {
-                                    Image(systemName: "diamond.fill")
-                                        .foregroundColor(Brand.primaryBlue)
+                                    Image(systemName: "banknote.fill")
+                                        .foregroundColor(isShowingResults ? .black : Brand.primaryBlue)
                                         .font(.caption)
-                                    Text("\(store.pointsEarnedThisSession) pts")
-                                        .font(Brand.smallFont)
-                                        .foregroundColor(Brand.primaryBlue)
+                                    Text(formatMoneyFromPoints(store.pointsEarnedThisSession))
+                                        .font(Brand.smallFont.weight(.semibold))
+                                        .foregroundColor(isShowingResults ? .black : Brand.primaryBlue)
                                 }
                                 
                                 // Streak display
                                 if store.currentQuestionStreak > 0 {
                                     HStack(spacing: 4) {
                                         Image(systemName: "flame.fill")
-                                            .foregroundColor(Brand.teal)
+                                            .foregroundColor(isShowingResults ? .orange : Brand.teal)
                                             .font(.caption)
                                         Text("\(store.currentQuestionStreak)")
-                                            .font(Brand.smallFont)
-                                            .foregroundColor(Brand.teal)
+                                            .font(Brand.smallFont.weight(.semibold))
+                                            .foregroundColor(isShowingResults ? .orange : Brand.teal)
                                     }
-                                }
-                                
-                                // XP display
-                                HStack(spacing: 4) {
-                                    Image(systemName: "star.fill")
-                                        .foregroundColor(Brand.lavender)
-                                        .font(.caption)
-                                    Text("\(lesson.xpReward) XP")
-                                        .font(Brand.smallFont)
-                                        .foregroundColor(Brand.lavender)
                                 }
                             }
                             
                             HStack(spacing: 4) {
                                 Image(systemName: "clock")
-                                    .foregroundColor(Brand.textSecondary)
+                                    .foregroundColor(isShowingResults ? .black.opacity(0.7) : Brand.textSecondary)
                                     .font(.caption)
                                 Text("\(lesson.estimatedTime)m")
-                                    .font(Brand.smallFont)
-                                    .foregroundColor(Brand.textSecondary)
+                                    .font(Brand.smallFont.weight(.medium))
+                                    .foregroundColor(isShowingResults ? .black.opacity(0.7) : Brand.textSecondary)
                             }
                         }
                     }
@@ -4219,7 +3794,7 @@ struct LessonPlayView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
                 .padding(.bottom, 20)
-                .background(Material.ultraThinMaterial)
+                .background(isShowingResults ? Material.thickMaterial : Material.ultraThinMaterial)
                 
                 // Question content
                 if currentIndex < lesson.questions.count {
@@ -4365,22 +3940,47 @@ struct LessonPlayView: View {
 
     func finish() {
         let ratio = Double(score) / Double(max(1, lesson.questions.count))
+        
+        // Halve points if score is below 7/10 (70%)
+        if ratio < 0.7 {
+            store.pointsEarnedThisSession = store.pointsEarnedThisSession / 2.0
+        }
+        
+        // Add points to module-specific EOY Bonus
+        store.updateCurrentModuleProgress { progress in
+            progress.totalPoints += store.pointsEarnedThisSession
+        }
+        
         let earned = Int(Double(lesson.xpReward) * (0.5 + 0.5 * ratio))
         store.awardXP(earned)
+        
+        // Add XP to module-specific progress
+        store.updateCurrentModuleProgress { progress in
+            progress.xp += earned
+            progress.level = AppStore.calculateLevel(xp: progress.xp)
+        }
         
         // Track study time (estimated based on lesson time)
         store.totalStudyTime += lesson.estimatedTime
         store.updateDailyGoalProgress(action: .studyTime(lesson.estimatedTime))
         
-        // Only unlock next road if user scores at least 75%
-        if ratio >= 0.75 {
+        // Only unlock next road if user scores at least 7/10 (70%)
+        if ratio >= 0.7 {
             store.markLessonCompleted(lesson.id)
+            // Track completed lesson in module
+            store.updateCurrentModuleProgress { progress in
+                progress.completedLessonIDs.insert(lesson.id)
+            }
             // Set flag to show unlock animation on quest page
             store.shouldShowUnlockAnimation = true
         }
         
         if ratio == 1.0 {
             store.perfectLessons += 1
+            // Track perfect lesson in module
+            store.updateCurrentModuleProgress { progress in
+                progress.perfectLessons += 1
+            }
             // Update daily goals for perfect lesson
             store.updateDailyGoalProgress(action: .perfectLesson)
         }
@@ -4388,9 +3988,19 @@ struct LessonPlayView: View {
         // Navigate back to quest page
         dismiss()
     }
+    
+    private func formatMoneyFromPoints(_ points: Double) -> String {
+        // Format with one decimal place if needed, otherwise show as integer
+        if points.truncatingRemainder(dividingBy: 1) == 0 {
+            return "$\(Int(points))K"
+        } else {
+            return String(format: "$%.1fK", points)
+        }
+    }
 }
 
 struct LessonResultsView: View {
+    @EnvironmentObject var store: AppStore
     let lesson: Lesson
     let score: Int
     let totalQuestions: Int
@@ -4410,13 +4020,42 @@ struct LessonResultsView: View {
         Int(Double(lesson.xpReward) * (0.5 + 0.5 * percentage))
     }
     
+    var bonusAmount: Double {
+        let ratio = Double(score) / Double(totalQuestions)
+        // Calculate bonus: if score < 7/10, halve the points; otherwise use full points
+        if ratio < 0.7 {
+            return store.pointsEarnedThisSession / 2.0
+        } else {
+            return store.pointsEarnedThisSession
+        }
+    }
+    
+    var bonusMessage: String {
+        let ratio = Double(score) / Double(totalQuestions)
+        let formattedBonus = formatBonus(bonusAmount)
+        
+        if ratio < 0.7 {
+            return "Yikes...only got a \(formattedBonus) bonus"
+        } else {
+            return "Congrats! You received a \(formattedBonus) bonus"
+        }
+    }
+    
+    private func formatBonus(_ amount: Double) -> String {
+        if amount.truncatingRemainder(dividingBy: 1) == 0 {
+            return "$\(Int(amount))K"
+        } else {
+            return String(format: "$%.1fK", amount)
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-                .frame(height: 60)
+                .frame(height: 20)
             
             // Results header with better spacing
-            VStack(spacing: 32) {
+            VStack(spacing: 24) {
                 ZStack {
                     Circle()
                         .fill(
@@ -4439,13 +4078,28 @@ struct LessonResultsView: View {
                 .animation(.easeOut(duration: 0.8), value: animateResults)
                 
                 VStack(spacing: 16) {
-                    Text(percentage >= 0.8 ? "Excellent!" : "Good Job!")
+                    Text(
+                        percentage >= 0.8
+                        ? "Excellent!"
+                        : (percentage >= 0.75
+                           ? "Good Job!"
+                           : "Not a top bucket analyst...try again!")
+                    )
                         .font(.largeTitle.weight(.bold))
                         .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                     
                     Text("You scored \(score) out of \(totalQuestions)")
                         .font(.title2.weight(.medium))
                         .foregroundColor(.secondary)
+                    
+                    Text(bonusMessage)
+                        .font(.title3.weight(.medium))
+                        .foregroundColor(percentage < 0.7 ? .orange : .green)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 8)
                 }
                 .opacity(animateResults ? 1.0 : 0.0)
                 .offset(y: animateResults ? 0 : 20)
@@ -4453,7 +4107,7 @@ struct LessonResultsView: View {
             }
             
             Spacer()
-                .frame(height: 40)
+                .frame(height: 20)
             
             // XP indicator with better spacing
             if percentage >= 0.8 {
@@ -4472,10 +4126,10 @@ struct LessonResultsView: View {
             }
             
             Spacer()
-                .frame(height: 60)
+                .frame(height: 30)
             
             // Action buttons with better spacing
-            VStack(spacing: 24) {
+            VStack(spacing: 16) {
                 // Continue as plain black text button
                 Button(action: onFinish) {
                     HStack(spacing: 8) {
@@ -4502,7 +4156,7 @@ struct LessonResultsView: View {
                     Button("Retry Lesson") {
                         // Handle retry
                     }
-                    .foregroundColor(Color.mint)
+                    .foregroundColor(.orange)
                     .font(.title3.weight(.medium))
                     .opacity(animateResults ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.8).delay(1.2), value: animateResults)
@@ -4510,9 +4164,9 @@ struct LessonResultsView: View {
             }
             
             Spacer()
-                .frame(height: 80)
+                .frame(height: 20)
         }
-        .padding(.horizontal, 32)
+        .padding(.horizontal, 24)
         .onAppear {
             animateResults = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {

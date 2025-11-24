@@ -161,7 +161,7 @@ struct DailyGoalsView: View {
         FuturisticGlassmorphismCard {
             VStack(spacing: 16) {
                 HStack {
-                    Image(systemName: "star.fill")
+                    Image(systemName: "banknote.fill")
                         .font(.system(size: 20))
                         .foregroundColor(Brand.gold)
                     
@@ -187,7 +187,7 @@ struct DailyGoalsView: View {
                     Spacer()
                     
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(store.todayDailyGoalsXP) XP")
+                        Text(formatMoney(store.todayDailyGoalsXP))
                             .font(Brand.headlineFont)
                             .fontWeight(.bold)
                             .foregroundColor(Brand.gamificationAccent)
@@ -204,7 +204,7 @@ struct DailyGoalsView: View {
                             .font(.system(size: 16))
                             .foregroundColor(Brand.gold)
                         
-                        Text("All goals completed! +25 bonus XP")
+                        Text("All goals completed! +$25")
                             .font(Brand.captionFont)
                             .foregroundColor(Brand.gold)
                             .fontWeight(.medium)
@@ -231,6 +231,10 @@ struct DailyGoalsView: View {
                 }
             }
         }
+    }
+    
+    private func formatMoney(_ xp: Int) -> String {
+        return "$\(xp)K"
     }
 }
 
@@ -278,7 +282,7 @@ struct DailyGoalCardView: View {
                         // XP badge - only show for incomplete goals
                         if !goal.isCompleted {
                             HStack(spacing: 4) {
-                                Image(systemName: "star.fill")
+                                Image(systemName: "banknote.fill")
                                     .font(.system(size: 12))
                                     .foregroundColor(Brand.gold)
                                 
